@@ -8,6 +8,12 @@ class EpdFont {
   const EpdFontData* data;
   explicit EpdFont(const EpdFontData* data) : data(data) {}
   ~EpdFont() = default;
+
+  // When enabled (UI fonts only), getGlyph() falls back to the built-in 20px CJK
+  // UI font for true-CJK codepoints the primary font lacks. Reader fonts leave this off.
+  void enableCjkUiFallback() { cjkUiFallback_ = true; }
+  bool cjkUiFallbackEnabled() const { return cjkUiFallback_; }
+
   void getTextDimensions(const char* string, int* w, int* h) const;
 
   const EpdGlyph* getGlyph(uint32_t cp) const;
@@ -23,4 +29,7 @@ class EpdFont {
   /// as many following codepoints from text as possible. Returns the
   /// (possibly substituted) codepoint; advances text past consumed chars.
   uint32_t applyLigatures(uint32_t cp, const char*& text) const;
+
+ private:
+  bool cjkUiFallback_ = false;
 };

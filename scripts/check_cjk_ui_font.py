@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""
+Manual coverage check: verify that all CJK characters used in the translation YAML files
+(including the ``_language_name`` shown in the language picker, e.g. "日本語") are present in
+the built-in CJK UI font header (lib/EpdFont/cjk_ui_font_20.h).
+
+This is a MANUAL tool — it is intentionally NOT wired into the PlatformIO build. Run it by hand
+after editing translations or regenerating the font. Requires PyYAML.
+
+Usage:
+    python3 scripts/check_cjk_ui_font.py
+"""
+
+import glob
+import re
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    # Exit non-zero so a manual run can't mistake the skip for a pass — this is the
+    # only translation-coverage gate; silently returning success would mask missing
+    # kanji in production strings.
+    print(
+        "Error: PyYAML required for CJK UI font check. Run: pip3 install PyYAML",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def extract_cjk_from_translations(translations_dir):
+    """Extract all CJK characters (U+3000+) from translation YAML files."""
+    chars = set()
+    for path in sorted(glob.glob(str(Path(translations_dir) / "*.yaml"))):
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        for key, value in data.items():
+            # Skip metadata keys, but keep _language_name — it is shown in the language
+            # picker (e.g. "日本語") and so its glyphs must be covered by the UI font.
+            if key.startswith("_") and key != "_language_name":
+                continue
+            for c in str(value):
+                if ord(c) >= 0x3000:
+                    chars.add(c)
+    return chars
+
+
+def extract_codepoints_from_header(header_path):
+    """Extract codepoints from CJK_UI_CODEPOINTS array in the header file."""
+    codepoints = set()
+    with open(header_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    for match in re.finditer(r"0x([0-9A-Fa-f]{4})", content):
+        codepoints.add(int(match.group(1), 16))
+    return codepoints
+
+
+def check(project_root):
+    translations_dir = project_root / "lib" / "I18n" / "translations"
+    header_path = project_root / "lib" / "EpdFont" / "cjk_ui_font_20.h"
+
+    # Missing inputs are a real failure for the only translation-coverage gate.
+    # A typo or repo restructure would otherwise silently pass the check.
+    if not translations_dir.is_dir():
+        print(f"Error: translations dir missing: {translations_dir}", file=sys.stderr)
+        return False
+    if not header_path.exists():
+        print(f"Error: header missing: {header_path}", file=sys.stderr)
+        return False
+
+    translation_chars = extract_cjk_from_translations(translations_dir)
+    header_codepoints = extract_codepoints_from_header(header_path)
+
+    missing = []
+    for c in sorted(translation_chars, key=ord):
+        if ord(c) not in header_codepoints:
+            missing.append(c)
+
+    if missing:
+        print(f"\n*** CJK UI Font Check Failed ***")
+        print(f"{len(missing)} characters used in translations are missing from cjk_ui_font_20.h:\n")
+        print("  " + "".join(missing))
+        print(f"\nRun the following to regenerate:")
+        print(f"  python3 scripts/generate_cjk_ui_font.py --size 20 --font <path-to-font.otf>")
+        print()
+        return False
+
+    return True
+
+
+def main():
+    project_root = Path(__file__).parent.parent
+    if check(project_root):
+        print("CJK UI font check: OK")
+    else:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

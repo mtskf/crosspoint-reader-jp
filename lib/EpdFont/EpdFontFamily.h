@@ -28,6 +28,21 @@ class EpdFontFamily {
   int8_t getKerning(uint32_t leftCp, uint32_t rightCp, Style style = REGULAR) const;
   uint32_t applyLigatures(uint32_t cp, const char*& text, Style style = REGULAR) const;
 
+  // True iff any participating variant has CJK UI fallback enabled. We check every
+  // non-null variant (not just `regular`) so an asymmetric configuration — e.g. flag
+  // set on `bold` but not `regular` — still triggers the family-level metric inflation
+  // in GfxRenderer. Per-glyph dispatch in EpdFont::getGlyph consults its own flag, so
+  // the metric path here must err on the side of "any variant might synthesize a CJK
+  // glyph, so reserve the 20px box". src/main.cpp sets the flag uniformly across all
+  // UI variants today; this guard catches a future-variant drift.
+  bool hasCjkUiFallback() const {
+    if (regular && regular->cjkUiFallbackEnabled()) return true;
+    if (bold && bold->cjkUiFallbackEnabled()) return true;
+    if (italic && italic->cjkUiFallbackEnabled()) return true;
+    if (boldItalic && boldItalic->cjkUiFallbackEnabled()) return true;
+    return false;
+  }
+
  private:
   const EpdFont* regular;
   const EpdFont* bold;

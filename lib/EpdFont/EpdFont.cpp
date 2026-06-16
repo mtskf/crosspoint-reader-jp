@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "CjkUiFallback.h"
+
 void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
                             int* maxY) const {
   *minX = startX;
@@ -177,6 +179,19 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
   if (data->glyphMissHandler) {
     const EpdGlyph* loaded = data->glyphMissHandler(data->glyphMissCtx, cp);
     if (loaded) return loaded;
+  }
+
+  // UI fonts: fall back to the built-in 20px CJK UI font for true-CJK codepoints
+  // before showing the replacement box. Gated so ASCII/Latin never routes here.
+  //
+  // Precedence contract: when both cjkUiFallback_ and glyphMissHandler are set on the
+  // same font, the SD handler runs first and the built-in CJK font is consulted only
+  // when the SD handler returns nullptr. UI fonts in this firmware do not carry a
+  // glyphMissHandler today; if a future custom SD UI font sets both, an SD I/O failure
+  // would be silently shadowed by the built-in CJK glyph for any CJK codepoint. Keep
+  // the two in sync.
+  if (cjkUiFallback_ && CjkUiFallback::shouldUse(cp)) {
+    return CjkUiFallback::makeGlyph(cp);
   }
 
   if (cp != REPLACEMENT_GLYPH) {
