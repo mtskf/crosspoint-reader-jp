@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "CjkUiFallback.h"
+
 void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
                             int* maxY) const {
   *minX = startX;
@@ -177,6 +179,12 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
   if (data->glyphMissHandler) {
     const EpdGlyph* loaded = data->glyphMissHandler(data->glyphMissCtx, cp);
     if (loaded) return loaded;
+  }
+
+  // UI fonts: fall back to the built-in 20px CJK UI font for true-CJK codepoints
+  // before showing the replacement box. Gated so ASCII/Latin never routes here.
+  if (cjkUiFallback_ && CjkUiFallback::shouldUse(cp)) {
+    return CjkUiFallback::makeGlyph(cp);
   }
 
   if (cp != REPLACEMENT_GLYPH) {
