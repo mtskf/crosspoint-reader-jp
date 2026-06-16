@@ -6,9 +6,11 @@
 #include <Logging.h>
 #include <SdCardFont.h>
 #include <Utf8.h>
+#include <pgmspace.h>
 
 #include <algorithm>
 
+#include "CjkUiFallback.h"  // resolves via lib/EpdFont include path
 #include "FontCacheManager.h"
 
 namespace {
@@ -27,6 +29,11 @@ const char* resolveVisualText(const char* text, std::string& visualBuffer, BidiU
 }  // namespace
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
+  // CJK UI fallback glyphs have a different bitmap format and are decoded by the blitter;
+  // they must never reach the generic decoders. Defensive: return null, never the CJK bitmap.
+  if (CjkUiFallback::isSynthesized(glyph)) {
+    return nullptr;
+  }
   if (fontData->groups != nullptr) {
     auto* fd = fontCacheManager_ ? fontCacheManager_->getDecompressor() : nullptr;
     if (!fd) {
@@ -150,6 +157,9 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
                              const bool pixelState, const EpdFontFamily::Style style) {
   const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
   if (!glyph) return;
+  // Built-in CJK UI glyphs have a different bitmap format and are never scaled
+  // (UI fonts don't use SUP/SUB). Skip rather than mis-decode the packed layout.
+  if (CjkUiFallback::isSynthesized(glyph)) return;
 
   const EpdFontData* fontData = fontFamily.getData(style);
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
@@ -244,6 +254,41 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     if (!renderer.glyphIntersectsStrip(gx0, gy0, gx0 + width - 1, gy0 + height - 1)) {
       return;
     }
+  }
+
+  if (CjkUiFallback::isSynthesized(glyph)) {
+    const uint8_t* cjk = CjkUiFont20::getCjkUiGlyph(glyph->dataOffset);
+    if (cjk == nullptr) return;
+    constexpr int bpr = CjkUiFont20::CJK_UI_FONT_BYTES_PER_ROW;  // 3 (fixed 20px-wide storage)
+    int outerBase, innerBase;
+    if constexpr (rotation == TextRotation::Rotated90CW) {
+      // Match the bumped baseline the non-rotated path gets via getFontAscenderSize (Task 7
+      // bumps UI fonts to >= CJK_TOP). Raw fontData->ascender would shift rotated CJK a few px.
+      const int asc = std::max(static_cast<int>(fontData->ascender), static_cast<int>(CjkUiFallback::CJK_TOP));
+      outerBase = cursorX + asc - top;  // screenX = outerBase + glyphY
+      innerBase = cursorY - left;       // screenY = innerBase - glyphX
+    } else {
+      outerBase = cursorY - top;   // screenY = outerBase + glyphY
+      innerBase = cursorX + left;  // screenX = innerBase + glyphX
+    }
+    // Loop over glyph->width/height (== the synthesized advance box) so draw, strip-cull,
+    // and measurement all agree. bpr is the fixed 3-byte row stride of the 20px storage.
+    for (int glyphY = 0; glyphY < glyph->height; glyphY++) {
+      for (int glyphX = 0; glyphX < glyph->width; glyphX++) {
+        const uint8_t byte = pgm_read_byte(&cjk[glyphY * bpr + (glyphX >> 3)]);
+        if (!((byte >> (7 - (glyphX & 7))) & 1)) continue;
+        int screenX, screenY;
+        if constexpr (rotation == TextRotation::Rotated90CW) {
+          screenX = outerBase + glyphY;
+          screenY = innerBase - glyphX;
+        } else {
+          screenX = innerBase + glyphX;
+          screenY = outerBase + glyphY;
+        }
+        renderer.drawPixel(screenX, screenY, pixelState);  // same convention as the 1-bit Latin path
+      }
+    }
+    return;
   }
 
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
