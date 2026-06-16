@@ -294,7 +294,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate CJK UI font header')
     parser.add_argument('--size', type=int, default=26, help='Pixel size (default: 26)')
     parser.add_argument('--font', type=str, required=True, help='Path to font file (.otf/.ttf)')
-    parser.add_argument('--output', type=str, help='Output path (default: lib/GfxRenderer/cjk_ui_font_SIZE.h)')
+    parser.add_argument('--output', type=str, help='Output path (default: lib/EpdFont/cjk_ui_font_SIZE.h)')
     parser.add_argument('--translations', type=str,
                         help='Path to translations directory (default: auto-detect from project root)')
     parser.add_argument('--codepoints-file', type=str,
