@@ -1531,7 +1531,9 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
     return 0;
   }
 
-  return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+  const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+  if (fontIt->second.hasCjkUiFallback()) return std::max(ascender, (int)CjkUiFallback::CJK_TOP);  // >=16
+  return ascender;
 }
 
 int GfxRenderer::getLineHeight(const int fontId) const {
@@ -1541,7 +1543,10 @@ int GfxRenderer::getLineHeight(const int fontId) const {
     return 0;
   }
 
-  return fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
+  const int advanceY = fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
+  if (fontIt->second.hasCjkUiFallback())
+    return std::max(advanceY, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT + 4);  // >=24
+  return advanceY;
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {
@@ -1550,7 +1555,9 @@ int GfxRenderer::getTextHeight(const int fontId) const {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
-  return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+  const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+  if (fontIt->second.hasCjkUiFallback()) return std::max(ascender, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT);  // >=20
+  return ascender;
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
