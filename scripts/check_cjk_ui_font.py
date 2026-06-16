@@ -19,8 +19,14 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("Warning: PyYAML not installed, skipping CJK UI font check")
-    sys.exit(0)
+    # Exit non-zero so a manual run can't mistake the skip for a pass — this is the
+    # only translation-coverage gate; silently returning success would mask missing
+    # kanji in production strings.
+    print(
+        "Error: PyYAML required for CJK UI font check. Run: pip3 install PyYAML",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 
 def extract_cjk_from_translations(translations_dir):
@@ -54,10 +60,14 @@ def check(project_root):
     translations_dir = project_root / "lib" / "I18n" / "translations"
     header_path = project_root / "lib" / "EpdFont" / "cjk_ui_font_20.h"
 
+    # Missing inputs are a real failure for the only translation-coverage gate.
+    # A typo or repo restructure would otherwise silently pass the check.
     if not translations_dir.is_dir():
-        return True
+        print(f"Error: translations dir missing: {translations_dir}", file=sys.stderr)
+        return False
     if not header_path.exists():
-        return True
+        print(f"Error: header missing: {header_path}", file=sys.stderr)
+        return False
 
     translation_chars = extract_cjk_from_translations(translations_dir)
     header_codepoints = extract_codepoints_from_header(header_path)
@@ -89,12 +99,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-else:
-    try:
-        Import("env")
-        _project_root = Path(env.subst("$PROJECT_DIR"))
-        if not check(_project_root):
-            Import("env")
-            env.Exit(1)
-    except NameError:
-        pass

@@ -19,9 +19,22 @@ except ImportError:
     sys.exit(1)
 
 try:
+    import PIL
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
     print("Error: PIL/Pillow not installed. Run: pip3 install Pillow")
+    sys.exit(1)
+
+# anchor="ls" (left-baseline) was added in Pillow 8.0. Earlier versions silently fall
+# back to top-left positioning, which the runtime baseline math (CJK_TOP = HEIGHT - 4)
+# does NOT compensate for — every glyph would ship with a wrong baseline. Fail fast.
+_PIL_MAJOR_MINOR = tuple(int(p) for p in PIL.__version__.split(".")[:2])
+if _PIL_MAJOR_MINOR < (8, 0):
+    print(
+        f"Error: Pillow >= 8.0 required for anchor='ls' (have {PIL.__version__}). "
+        f"Older versions ship glyphs with a wrong baseline that the runtime cannot fix.",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 # Base UI characters: ASCII, punctuation, kana
@@ -129,16 +142,31 @@ def generate_font_header(font_path, pixel_size, output_path, translations_dir=No
         img = Image.new('1', (pixel_size, pixel_size), 0)
         draw = ImageDraw.Draw(img)
 
-        # Get character bounding box
+        # Get character bounding box.
         try:
             bbox = font.getbbox(char)
-            if bbox:
-                char_width = bbox[2] - bbox[0]
-                char_height = bbox[3] - bbox[1]
-            else:
-                char_width = pixel_size // 2
-                char_height = pixel_size
-        except:
+        except (OSError, ValueError) as e:
+            print(f"  warn: getbbox failed for U+{cp:04X} ({char!r}): {e}", file=sys.stderr)
+            bbox = None
+
+        # Distinguish "font covers the glyph" from "font fell back to .notdef".
+        # If the rendered mask is empty, the source font has no real glyph for cp.
+        # Shipping the .notdef as a glyph entry would make CjkUiFont20::hasCjkUiGlyph()
+        # lie at runtime: shouldUse() would gate on it, the fallback would "succeed",
+        # and we'd draw a tofu box for that codepoint with no log signal.
+        try:
+            mask_bbox = font.getmask(char).getbbox()
+        except Exception as e:
+            print(f"  warn: getmask failed for U+{cp:04X} ({char!r}): {e}", file=sys.stderr)
+            mask_bbox = None
+        if mask_bbox is None:
+            print(f"  skip: U+{cp:04X} ({char!r}) not covered by source font", file=sys.stderr)
+            continue
+
+        if bbox:
+            char_width = bbox[2] - bbox[0]
+            char_height = bbox[3] - bbox[1]
+        else:
             char_width = pixel_size // 2
             char_height = pixel_size
 
@@ -147,13 +175,9 @@ def generate_font_header(font_path, pixel_size, output_path, translations_dir=No
         # Align to a fixed baseline to keep CJK/Latin stable within the same line
         y = baseline
 
-        # Draw character
-        try:
-            # Use left-baseline anchor: y is the baseline position
-            draw.text((x, y), char, font=font, fill=1, anchor="ls")
-        except TypeError:
-            # Fallback for older Pillow: approximate baseline by shifting up
-            draw.text((x, y - ascent), char, font=font, fill=1)
+        # Draw character. anchor="ls" (left-baseline) is enforced by the Pillow >= 8.0
+        # check at module load; the older silent-fallback path is intentionally gone.
+        draw.text((x, y), char, font=font, fill=1, anchor="ls")
 
         # Convert to bytes
         bytes_per_row = (pixel_size + 7) // 8
