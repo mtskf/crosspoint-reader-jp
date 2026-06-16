@@ -4,6 +4,9 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: write
+
 jobs:
   build-release:
     runs-on: ubuntu-latest
@@ -45,3 +48,32 @@ jobs:
             .pio/build/gh_release/firmware.elf
             .pio/build/gh_release/firmware.map
             .pio/build/gh_release/partitions.bin
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .pio/build/gh_release/bootloader.bin
+            .pio/build/gh_release/firmware.bin
+            .pio/build/gh_release/partitions.bin
+          body: |
+            Japanese UI support for CrossPoint Reader (community fork).
+            Based on upstream CrossPoint Reader v1.3.x.
+
+            ## Flashing (Xteink X4 / ESP32-C3)
+            Write all three images to the device:
+            - bootloader.bin
+            - partitions.bin
+            - firmware.bin
+
+            ## What's included
+            - Japanese UI translation (i18n)
+            - Built-in CJK glyph rendering for UI strings (sparse, UI-only font in flash)
+
+            Note: this localises the UI to Japanese. It does not add Japanese
+            body-text typesetting for EPUB content.
+
+            ## Font licensing
+            This firmware embeds bitmap glyphs derived from Source Han Sans
+            (© 2014–2021 Adobe, https://github.com/adobe-fonts/source-han-sans),
+            licensed under the SIL Open Font License 1.1 (https://scripts.sil.org/OFL).
