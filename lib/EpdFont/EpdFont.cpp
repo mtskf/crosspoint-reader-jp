@@ -183,6 +183,13 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
 
   // UI fonts: fall back to the built-in 20px CJK UI font for true-CJK codepoints
   // before showing the replacement box. Gated so ASCII/Latin never routes here.
+  //
+  // Precedence contract: when both cjkUiFallback_ and glyphMissHandler are set on the
+  // same font, the SD handler runs first and the built-in CJK font is consulted only
+  // when the SD handler returns nullptr. UI fonts in this firmware do not carry a
+  // glyphMissHandler today; if a future custom SD UI font sets both, an SD I/O failure
+  // would be silently shadowed by the built-in CJK glyph for any CJK codepoint. Keep
+  // the two in sync.
   if (cjkUiFallback_ && CjkUiFallback::shouldUse(cp)) {
     return CjkUiFallback::makeGlyph(cp);
   }
