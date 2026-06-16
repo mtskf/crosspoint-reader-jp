@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Pre-build check: verify that all CJK characters used in translation YAML files
-are present in the built-in CJK UI font header (cjk_ui_font_20.h).
+Manual coverage check: verify that all CJK characters used in the translation YAML files
+(including the ``_language_name`` shown in the language picker, e.g. "日本語") are present in
+the built-in CJK UI font header (lib/EpdFont/cjk_ui_font_20.h).
 
-If missing characters are found, the build fails with an actionable error message.
+This is a MANUAL tool — it is intentionally NOT wired into the PlatformIO build. Run it by hand
+after editing translations or regenerating the font. Requires PyYAML.
 
-Usage (standalone):
-    python3 check_cjk_ui_font.py
-
-Usage (PlatformIO pre-build):
-    Added automatically via platformio.ini extra_scripts.
+Usage:
+    python3 scripts/check_cjk_ui_font.py
 """
 
 import glob
@@ -31,7 +30,9 @@ def extract_cjk_from_translations(translations_dir):
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         for key, value in data.items():
-            if key.startswith("_"):
+            # Skip metadata keys, but keep _language_name — it is shown in the language
+            # picker (e.g. "日本語") and so its glyphs must be covered by the UI font.
+            if key.startswith("_") and key != "_language_name":
                 continue
             for c in str(value):
                 if ord(c) >= 0x3000:
