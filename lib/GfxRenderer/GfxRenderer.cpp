@@ -234,16 +234,26 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 
   const EpdFontData* fontData = fontFamily.getData(style);
   const bool is2Bit = fontData->is2Bit;
+  const bool isSynth = CjkUiFallback::isSynthesized(glyph);
   const uint8_t width = glyph->width;
   const uint8_t height = glyph->height;
   const int left = glyph->left;
   const int top = glyph->top;
+  // For rotated synthesized CJK glyphs, the draw uses a baseline that matches the
+  // non-rotated path's getFontAscenderSize() floor (UI ascender raised to >= CJK_TOP
+  // when CJK fallback is on). The strip-cull below MUST use the same ascender so a
+  // CJK glyph never gets culled at a Y that doesn't match where it would draw. With
+  // current UI fonts (ascender >= 18) the floor never triggers, but a future smaller
+  // UI font with the CJK flag would otherwise silently drop CJK near strip boundaries.
+  const int rotatedAscender =
+      isSynth ? std::max(static_cast<int>(fontData->ascender), static_cast<int>(CjkUiFallback::CJK_TOP))
+              : static_cast<int>(fontData->ascender);
 
   // Tiled-grayscale band culling: if this glyph's physical y-extent is entirely
   // outside the active strip, skip it before the expensive bitmap decode. This
   // is what makes per-band re-rendering cheap. No-op outside strip mode.
   if constexpr (rotation == TextRotation::Rotated90CW) {
-    const int ob = cursorX + fontData->ascender - top;
+    const int ob = cursorX + rotatedAscender - top;
     const int ib = cursorY - left;
     if (!renderer.glyphIntersectsStrip(ob, ib - (width - 1), ob + height - 1, ib)) {
       return;
@@ -256,17 +266,22 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     }
   }
 
-  if (CjkUiFallback::isSynthesized(glyph)) {
+  if (isSynth) {
     const uint8_t* cjk = CjkUiFont20::getCjkUiGlyph(glyph->dataOffset);
-    if (cjk == nullptr) return;
+    if (cjk == nullptr) {
+      // Unreachable today — shouldUse() gates on hasCjkUiGlyph(), so the bitmap must
+      // exist whenever a synthesized glyph reaches us. Log if the invariant breaks
+      // (future shouldUse refactor, mismatched generator) — every other glyph-miss
+      // path in this file logs, and a silent return would mask the regression as
+      // "invisible characters in UI labels".
+      LOG_ERR("GFX", "CJK fallback bitmap missing for U+%04X", (unsigned)glyph->dataOffset);
+      return;
+    }
     constexpr int bpr = CjkUiFont20::CJK_UI_FONT_BYTES_PER_ROW;  // 3 (fixed 20px-wide storage)
     int outerBase, innerBase;
     if constexpr (rotation == TextRotation::Rotated90CW) {
-      // Match the bumped baseline the non-rotated path gets via getFontAscenderSize (Task 7
-      // bumps UI fonts to >= CJK_TOP). Raw fontData->ascender would shift rotated CJK a few px.
-      const int asc = std::max(static_cast<int>(fontData->ascender), static_cast<int>(CjkUiFallback::CJK_TOP));
-      outerBase = cursorX + asc - top;  // screenX = outerBase + glyphY
-      innerBase = cursorY - left;       // screenY = innerBase - glyphX
+      outerBase = cursorX + rotatedAscender - top;  // screenX = outerBase + glyphY
+      innerBase = cursorY - left;                   // screenY = innerBase - glyphX
     } else {
       outerBase = cursorY - top;   // screenY = outerBase + glyphY
       innerBase = cursorX + left;  // screenX = innerBase + glyphX
@@ -1532,8 +1547,7 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
   }
 
   const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
-  if (fontIt->second.hasCjkUiFallback()) return std::max(ascender, (int)CjkUiFallback::CJK_TOP);  // >=16
-  return ascender;
+  return CjkUiFallback::ascenderFloor(ascender, fontIt->second.hasCjkUiFallback());
 }
 
 int GfxRenderer::getLineHeight(const int fontId) const {
@@ -1544,8 +1558,7 @@ int GfxRenderer::getLineHeight(const int fontId) const {
   }
 
   const int advanceY = fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
-  if (fontIt->second.hasCjkUiFallback()) return std::max(advanceY, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT + 4);  // >=24
-  return advanceY;
+  return CjkUiFallback::lineHeightFloor(advanceY, fontIt->second.hasCjkUiFallback());
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {
@@ -1555,8 +1568,7 @@ int GfxRenderer::getTextHeight(const int fontId) const {
     return 0;
   }
   const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
-  if (fontIt->second.hasCjkUiFallback()) return std::max(ascender, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT);  // >=20
-  return ascender;
+  return CjkUiFallback::textHeightFloor(ascender, fontIt->second.hasCjkUiFallback());
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
