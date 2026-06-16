@@ -1544,8 +1544,7 @@ int GfxRenderer::getLineHeight(const int fontId) const {
   }
 
   const int advanceY = fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
-  if (fontIt->second.hasCjkUiFallback())
-    return std::max(advanceY, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT + 4);  // >=24
+  if (fontIt->second.hasCjkUiFallback()) return std::max(advanceY, (int)CjkUiFont20::CJK_UI_FONT_HEIGHT + 4);  // >=24
   return advanceY;
 }
 

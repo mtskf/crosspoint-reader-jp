@@ -1,5 +1,6 @@
 #pragma once
-#include <Utf8.h>            // utf8IsCjkBreakable
+#include <Utf8.h>  // utf8IsCjkBreakable
+
 #include "EpdFontData.h"     // EpdGlyph
 #include "cjk_ui_font_20.h"  // CjkUiFont20::*
 
@@ -19,9 +20,7 @@ inline int g_ringPos = 0;
 
 // True only for real CJK codepoints the CJK font covers. Never true for cp < 0x80,
 // so ASCII/Latin stay on the primary UI font.
-inline bool shouldUse(uint32_t cp) {
-  return utf8IsCjkBreakable(cp) && CjkUiFont20::hasCjkUiGlyph(cp);
-}
+inline bool shouldUse(uint32_t cp) { return utf8IsCjkBreakable(cp) && CjkUiFont20::hasCjkUiGlyph(cp); }
 
 inline const EpdGlyph* makeGlyph(uint32_t cp) {
   // Use the proportional cell width for BOTH bbox width and advance so getTextBounds()
@@ -35,8 +34,8 @@ inline const EpdGlyph* makeGlyph(uint32_t cp) {
   g.advanceX = static_cast<uint16_t>(w) << 4;  // 12.4 fixed-point; advance == bbox width
   g.left = 0;
   g.top = CJK_TOP;
-  g.dataLength = 0;       // unused for CJK glyphs
-  g.dataOffset = cp;      // carry cp so the blitter can fetch the PROGMEM bitmap
+  g.dataLength = 0;   // unused for CJK glyphs
+  g.dataOffset = cp;  // carry cp so the blitter can fetch the PROGMEM bitmap
   return &g;
 }
 
