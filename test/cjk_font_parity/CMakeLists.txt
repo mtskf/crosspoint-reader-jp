@@ -1,20 +1,39 @@
 # test/cjk_font_parity/CMakeLists.txt
 #
-# The parity test compares the converted EpdFontData against the fork's reference
-# data extracted via the same Python parser used by the converter. This avoids
-# include-shimming the fork header (which would require deleting both the namespace
-# opening `{` and its matching closing `}` — fragile against any future header
-# layout change).
+# Two host test executables guard the converted CJK font asset:
 #
-# The fork source lives outside the repo (it is not checked in). Where it is
-# absent — e.g. the standard CI runner — this is a local-only verification, so the
-# target is skipped rather than failing the build. CI's drift guard is the
-# `sha256:` comment in the committed cjk_ui_20.{h,cpp} artifact.
+#   CjkFontSelfTest   — fork-INDEPENDENT structural invariants of the committed
+#                       cjk_ui_20.{h,cpp} (metrics, per-glyph metadata, bitmap
+#                       offset contiguity, interval table). Built unconditionally,
+#                       so CI verifies the artifact on every run.
+#
+#   CjkFontParityTest — fork-DEPENDENT bit-per-bit pixel parity vs the fork's
+#                       cjk_ui_font_20.h. The fork source is not checked in, so
+#                       this target is built only where it is present (local dev)
+#                       and skipped elsewhere (e.g. standard CI).
+#
+# The `// sha256:` comment in the generated artifact is a marker for detecting
+# drift against the fork source by re-running the converter; it is NOT an
+# automated CI check. Full pixel parity is therefore a local gate; CI's standing
+# protection is CjkFontSelfTest.
 
+# --- Fork-independent self-consistency test (always built) ---
+add_executable(CjkFontSelfTest
+  CjkFontSelfTest.cpp
+  ${REPO_ROOT}/lib/EpdFont/builtinFonts/cjk_ui_20.cpp
+)
+target_include_directories(CjkFontSelfTest PRIVATE
+  ${REPO_ROOT}/lib/EpdFont
+  ${REPO_ROOT}/lib/EpdFont/builtinFonts
+  ${REPO_ROOT}/test/support)
+target_link_libraries(CjkFontSelfTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(CjkFontSelfTest)
+
+# --- Fork-dependent pixel-parity test (local-only) ---
 set(FORK_HEADER /tmp/crosspoint-jp/lib/GfxRenderer/cjk_ui_font_20.h)
 
 if(NOT EXISTS ${FORK_HEADER})
-  message(STATUS "CJK fork reference not found at ${FORK_HEADER}; skipping cjk_font_parity (local-only test)")
+  message(STATUS "CJK fork reference not found at ${FORK_HEADER}; skipping CjkFontParityTest (local-only pixel parity)")
   return()
 endif()
 

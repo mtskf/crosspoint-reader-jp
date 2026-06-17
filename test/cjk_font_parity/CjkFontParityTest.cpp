@@ -51,15 +51,6 @@ static int findEpdGlyphIndex(const EpdFontData& fd, uint32_t cp) {
   return -1;
 }
 
-TEST(CjkFontParity, MetricFloor) {
-  // Verify the EpdFontData carries the required metric floor values
-  EXPECT_EQ(cjk_ui_20_font_data.ascender, 16);
-  EXPECT_EQ(cjk_ui_20_font_data.advanceY, 24);
-  EXPECT_EQ(cjk_ui_20_font_data.descender, 4);
-  EXPECT_FALSE(cjk_ui_20_font_data.is2Bit);
-  EXPECT_EQ(cjk_ui_20_font_data.glyphMissHandler, nullptr);
-}
-
 TEST(CjkFontParity, GlyphCount) {
   // Total glyphs in the EpdFontData must match the fork source count
   uint32_t total = 0;
@@ -96,23 +87,12 @@ TEST(CjkFontParity, AllCodepointsPixelPerfect) {
         if (fork_bit != epd_bit) {
           failures++;
           if (failures <= 5) {
-            ADD_FAILURE() << "U+" << std::hex << cp << " pixel(" << std::dec << x << "," << y
-                          << "): fork=" << fork_bit << " epd=" << epd_bit;
+            ADD_FAILURE() << "U+" << std::hex << cp << " pixel(" << std::dec << x << "," << y << "): fork=" << fork_bit
+                          << " epd=" << epd_bit;
           }
         }
       }
     }
   }
   EXPECT_EQ(failures, 0) << "Total pixel mismatches: " << failures;
-}
-
-TEST(CjkFontParity, AdvanceXIsWidth12p4) {
-  // For every glyph, advanceX == width << 4 (12.4 fixed-point)
-  for (uint32_t i = 0; i < cjk_ui_20_font_data.intervalCount; i++) {
-    const auto& iv = cjk_ui_20_font_data.intervals[i];
-    for (uint32_t j = 0; j <= iv.last - iv.first; j++) {
-      const EpdGlyph& g = cjk_ui_20_font_data.glyph[iv.offset + j];
-      EXPECT_EQ(g.advanceX, static_cast<uint16_t>(g.width) << 4) << "U+" << std::hex << (iv.first + j);
-    }
-  }
 }

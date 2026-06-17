@@ -8,7 +8,7 @@ import argparse
 import pathlib
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from convert_cjk_font_to_epdfontdata import parse_int_array  # shared helper
+from convert_cjk_font_to_epdfontdata import parse_int_array, validate_arrays  # shared helpers
 
 
 def main():
@@ -20,21 +20,15 @@ def main():
     codepoints = parse_int_array(source, 'CJK_UI_CODEPOINTS')
     widths = parse_int_array(source, 'CJK_UI_GLYPH_WIDTHS')
     glyphs = parse_int_array(source, 'CJK_UI_GLYPHS')
-    # Sanity checks — same invariants as the converter, applied to the reference data.
-    assert len(widths) == len(codepoints), f"widths/codepoints mismatch: {len(widths)} vs {len(codepoints)}"
-    assert len(glyphs) == len(codepoints) * 60, f"glyph bytes {len(glyphs)} != {len(codepoints)*60}"
-    assert codepoints == sorted(codepoints), "Codepoints not sorted ascending"
-    assert len(set(codepoints)) == len(codepoints), "Duplicate codepoints detected in fork header"
-    assert all(1 <= w <= 20 for w in widths), \
-        f"Width outside [1, 20]: {[w for w in widths if not (1 <= w <= 20)]}"
+    # Same fail-fast invariants as the converter (sys.exit-based, -O-safe).
+    validate_arrays(codepoints, widths, glyphs)
     out = [
         '#pragma once',
         '#include <cstdint>',
-        f'inline constexpr int kForkRef_NumGlyphs = {len(codepoints)};',
         'inline constexpr uint16_t kForkRef_Codepoints[] = {' + ','.join(str(c) for c in codepoints) + '};',
         'inline constexpr uint8_t  kForkRef_Widths[]     = {' + ','.join(str(w) for w in widths)     + '};',
         'inline constexpr uint8_t  kForkRef_Glyphs[]     = {' + ','.join(str(b) for b in glyphs)     + '};',
-        '// Alias for test (previously CJK_UI_FONT_GLYPH_COUNT_VAL)',
+        '// Glyph count under the name the parity test expects.',
         f'inline constexpr uint16_t CJK_UI_FONT_GLYPH_COUNT_VAL = {len(codepoints)};',
     ]
     pathlib.Path(args.output).write_text('\n'.join(out) + '\n', encoding='utf-8')

@@ -99,6 +99,33 @@ def build_intervals(codepoints: list[int]) -> list[tuple[int, int, int]]:
     return intervals
 
 
+def validate_arrays(codepoints: list[int], widths: list[int], glyph_data: list[int]) -> None:
+    """Fail-fast validation shared by the converter and the parity-reference
+    extractor. Uses explicit sys.exit (not assert) so the checks survive
+    `python -O` / PYTHONOPTIMIZE, which strips assert statements."""
+    if not codepoints or not widths or not glyph_data:
+        print(f"ERROR: empty array parsed (codepoints={len(codepoints)}, "
+              f"widths={len(widths)}, glyphs={len(glyph_data)}) — check fork header format",
+              file=sys.stderr)
+        sys.exit(1)
+    if len(codepoints) != len(widths):
+        print(f"ERROR: codepoint count {len(codepoints)} != width count {len(widths)}", file=sys.stderr)
+        sys.exit(1)
+    if len(glyph_data) != len(codepoints) * BYTES_PER_CHAR:
+        print(f"ERROR: glyph byte count {len(glyph_data)} != {len(codepoints)} * {BYTES_PER_CHAR}", file=sys.stderr)
+        sys.exit(1)
+    if codepoints != sorted(codepoints):
+        print("ERROR: codepoints must be sorted ascending", file=sys.stderr)
+        sys.exit(1)
+    if len(set(codepoints)) != len(codepoints):
+        print("ERROR: duplicate codepoints detected", file=sys.stderr)
+        sys.exit(1)
+    bad = [w for w in widths if not 1 <= w <= 20]
+    if bad:
+        print(f"ERROR: width out of range [1,20]: {bad}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', required=True, help='Path to cjk_ui_font_20.h')
@@ -123,15 +150,7 @@ def main() -> None:
     widths = parse_int_array(source, 'CJK_UI_GLYPH_WIDTHS')
     glyph_data = parse_int_array(source, 'CJK_UI_GLYPHS')
 
-    if len(codepoints) != len(widths):
-        print(f"ERROR: codepoint count {len(codepoints)} != width count {len(widths)}", file=sys.stderr)
-        sys.exit(1)
-    # Mandatory sanity checks — catch parser bugs before writing output.
-    assert len(glyph_data) == len(codepoints) * BYTES_PER_CHAR, \
-        f"Glyph byte count {len(glyph_data)} != {len(codepoints)} * {BYTES_PER_CHAR}"
-    assert codepoints == sorted(codepoints), "Codepoints must be sorted ascending"
-    assert len(set(codepoints)) == len(codepoints), "Duplicate codepoints detected"
-    assert all(1 <= w <= 20 for w in widths), f"Width out of range [1,20]: {[w for w in widths if not 1<=w<=20]}"
+    validate_arrays(codepoints, widths, glyph_data)
     print(f"Parsed {len(codepoints)} codepoints; widths range [{min(widths)}, {max(widths)}]; expected width 12 (narrow), 20 (full)")
 
     n = len(codepoints)
