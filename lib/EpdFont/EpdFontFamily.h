@@ -81,12 +81,10 @@ class EpdFontFamily {
   /// REPLACEMENT_GLYPH with primary's data.
   ResolvedGlyph resolveGlyph(uint32_t cp, Style style = REGULAR) const;
 
-  /// Returns the maximum ascender across primary (and fallback when present).
-  /// Task 6 upgrades this stub to max(primary, fallback).
+  /// Returns max(primary.ascender, fallback.ascender) if fallback is set; else primary.ascender.
   int getMaxAscender(Style style = REGULAR) const;
 
-  /// Returns the maximum advanceY across primary (and fallback when present).
-  /// Task 6 upgrades this stub to max(primary, fallback).
+  /// Returns max(primary.advanceY, fallback.advanceY) if fallback is set; else primary.advanceY.
   int getMaxAdvanceY(Style style = REGULAR) const;
 
  private:
