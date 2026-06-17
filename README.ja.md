@@ -6,16 +6,16 @@
 
 > ### 🇯🇵 このフォークについて
 >
-> これは [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) に**日本語UI対応**を追加したコミュニティフォークです。アップストリームの CrossPoint Reader v1.3.x をベースにしており、本家の全機能をそのまま継承しています。本家ファームウェアに加えて、以下を追加しています:
+> これは [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)（本家）に**日本語UI対応**を追加したコミュニティフォークです。本家 v1.3.x をベースにしており、その全機能をそのまま継承しています。本家に加えて、以下を追加しています:
 >
-> - **日本語UI翻訳** — メニュー・設定UIをすべて日本語化（`lib/I18n/translations/japanese.yaml`）。
-> - **ビルトインCJK UIグリフ** — flashに焼き込んだUI専用の20pxスパースビットマップフォント。SDカードへのフォント導入なしでメニューが日本語表示されます。CJK対応の縦メトリクスにより行間も崩れません。
+> - **メニューの日本語化** — メニューや設定画面の文字をすべて日本語に翻訳。
+> - **メニュー用の日本語フォントを内蔵** — メニューや設定画面の表示に使う日本語フォントだけをファームウェアに同梱済み。SDカードにフォントを入れなくても、メニューは日本語で正しく表示されます。⚠️ ただしこれは**メニュー専用**で、本の**本文**を日本語で表示するには別途 SD カードへフォントを追加する必要があります（→ [書籍用の日本語フォント](#書籍用の日本語フォント)）。
 >
-> **制約:** これは*UI*の日本語化です。EPUB本文の日本語組版は追加**しません** — 本文表示は本に埋め込まれたフォント（または [SDカードフォント](#sdカード用カスタムフォント)）に依存します。
+> **① 日本語版 firmware.bin を入手:** このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) から最新版の `firmware.bin` をダウンロードします（公式の Web フラッシャーには本家＝英語版しか並ばないため、必ずこちらから入手してください）。
 >
-> **日本語ビルドの入手:** このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) からダウンロードしてください。公式Webフラッシャーはアップストリームのビルドのみを配布しています。
+> **② 端末に書き込み:** <https://crosspointreader.com/#flash-tools> を **Chrome または Edge** で開き、機種（X3 / X4）を選んで **「Custom .bin」** から先ほどの `firmware.bin` をアップロードします。詳しい手順は下記 [ファームウェアのインストール](#ファームウェアのインストール) を参照。
 >
-> **書き込みはこちらから:** <https://crosspointreader.com/#flash-tools> — デバイスを USB-C で接続し、モデル（X3 または X4）を選択して **「Custom .bin」** をクリックし、Releases からダウンロードした `firmware.bin` をアップロードします。その他の方法は下記 [ファームウェアのインストール](#ファームウェアのインストール) を参照してください。
+> **③ 日本語の本を読むにはフォントを追加:** ①②でメニューは日本語になりますが、**日本語の本文を表示するには SD カードに日本語フォントを追加**する必要があります（内蔵フォントは英数字のみのため）。手順は [書籍用の日本語フォント](#書籍用の日本語フォント) を参照してください。
 
 CrossPoint はオープンソースの電子書籍リーダーファームウェアです。コミュニティによって開発され、完全にハック可能で、永久に無料です。「デバイスはメーカーが決めたことではなく、あなたが望むことをすべきだ」と信じる開発者と読者のコミュニティによって維持されています。
 
@@ -83,53 +83,53 @@ CrossPoint はオープンソースの電子書籍リーダーファームウェ
 
 ## ファームウェアのインストール
 
-### Web インストーラ（推奨）
+### 書き込み手順（推奨）
 
-日本語ビルドは Web フラッシャーのリリース選択肢には含まれません。カスタム `.bin` としてアップロードします。
+日本語版は公式 Web フラッシャーの一覧には並びません。`firmware.bin` を手動でアップロードして書き込みます。
 
-1. このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) から日本語ビルドの `firmware.bin` をダウンロードする。
-2. デバイスを USB-C でコンピュータに接続し、デバイスをスリープ解除/アンロックする。
-3. <https://crosspointreader.com/#flash-tools> にアクセスし、デバイス（X3 または X4）を選択し、**「Custom .bin」** をクリックして、ダウンロードした `firmware.bin` をアップロードする。
+1. **ダウンロード** — このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) から最新版の `firmware.bin` を PC に保存します。
+2. **接続** — 端末を USB-C ケーブルで PC につなぎ、画面をオンにします（スリープ中なら解除）。
+3. **書き込み** — <https://crosspointreader.com/#flash-tools> を **Chrome または Edge** で開きます（Safari / Firefox は非対応）。機種（X3 / X4）を選び、**「Custom .bin」** をクリックして、保存した `firmware.bin` を選んで書き込みます。
 
-> フラッシャーの「公式 CrossPoint リリース」の選択肢には**アップストリームのビルドのみ**が並びます（日本語UIではありません）。必ずこのフォークの Releases からダウンロードした `firmware.bin` を「Custom .bin」でアップロードしてください。
+> 一覧に並ぶ「公式 CrossPoint リリース」は**本家＝英語版だけ**で、日本語UIは含まれません。必ず上記のフォークの `firmware.bin` を「Custom .bin」からアップロードしてください。
 
-### 公式ファームウェアへの復元
+### 公式ファームウェアに戻す
 
-公式ファームウェアに戻すには、<https://crosspointreader.com/#flash-tools> を使って最新の公式ファームウェアを書き込むこともできます。
+元の公式ファームウェアに戻したいときは、<https://crosspointreader.com/#flash-tools> から最新の公式ファームウェアを書き込めます。
 
-### コマンドライン
+### 自分でビルドする場合
 
-1. [`esptool`](https://github.com/espressif/esptool) をインストール:
-
-```bash
-pip install esptool
-```
-
-1. このフォークの [リリースページ](https://github.com/mtskf/crosspoint-reader-jp/releases) から `firmware.bin` をダウンロードする。
-2. デバイスを USB-C で接続する。
-3. デバイスのポートを確認する。Linux では接続後に `dmesg` を実行。macOS では:
-
-```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
-```
-
-1. 書き込み:
-
-```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-
-`/dev/ttyACM0` は環境に合わせて調整してください。
-
-### 手動ビルド
-
-下記 [開発クイックスタート](#開発クイックスタート) を参照。
+開発者向けの手順は下記 [開発クイックスタート](#開発クイックスタート) を参照してください。
 
 ---
 
-## SDカード用カスタムフォント
+## 書籍用の日本語フォント
 
-手持ちの TTF/OTF ファイルを、SD カードから読み込める `.cpfont` ファイルに変換できます。ファームウェアの再書き込みは不要です。
+メニューは日本語化されていますが、**本の中身（本文）を日本語で表示するには、SD カードに日本語フォントを別途入れる必要があります**（内蔵フォントは英数字のみのため）。次の手順で追加します:
+
+1. **フォントを入手** — [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) のページで **Get font** を押してダウンロードします（ZIP がダウンロードされるので、解凍すると中に `.ttf` ファイルが入っています）。
+2. **`.cpfont` に変換** — [CrossPoint Font Builder](https://crosspointreader.com/fonts) を開き、解凍した `.ttf` をアップロードします。文字の範囲で **日本語 / CJK** を必ず選び（かな・漢字を含めるため）、生成された `.cpfont` ファイルをダウンロードします。
+   - Noto Sans JP にはイタリック体が無いため、italic / bold-italic は空のままで問題ありません（本文中のイタリック指定は通常スタイルで表示されるだけで、文字化けはしません）。
+3. **SD カードに置く** — 端末から SD カードを取り出して PC で開き、一番上の階層に `Fonts` フォルダを作り、その中にフォント名のフォルダ（例 `NotoSansJP`）を作って `.cpfont` ファイルを入れます。
+4. **端末で選ぶ** — SD カードを端末に戻して電源を入れ、**設定 > リーダー > フォントファミリー** で追加したフォントを選びます。
+
+SD カードの構成はこんな感じです:
+
+```text
+/  ← SD カードの一番上
+├── Fonts/
+│   └── NotoSansJP/
+│       ├── NotoSansJP_12.cpfont
+│       ├── NotoSansJP_14.cpfont
+│       ├── NotoSansJP_16.cpfont
+│       └── NotoSansJP_18.cpfont
+├── Books/      ← 本を入れるフォルダ（例）
+└── ...
+```
+
+### その他のカスタムフォント
+
+同じ `.cpfont` のワークフローで、任意の TTF/OTF フォントを導入できます（ファームウェアの再書き込みは不要）:
 
 1. <https://crosspointreader.com/fonts> にアクセスし、「SD-card font builder」フォームを開く。
 2. 最大 4 スタイル（regular、bold、italic、bold-italic）をアップロードし、ファミリー名・ポイントサイズ・Unicode 範囲を設定する。
@@ -137,7 +137,7 @@ esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 
 4. SD カードの `/fonts/YourFont/`（フォルダを隠す場合は `/.fonts/YourFont/`）にコピーする。
 5. デバイスのフォント設定からフォントを選択する。
 
-変換はファームウェアリポジトリの `lib/EpdFont/scripts/fontconvert_sdcard.py` スクリプトを未改変で実行するため、出力はローカルのホストビルドと一致します。
+変換はファームウェアリポジトリの `lib/EpdFont/scripts/fontconvert_sdcard.py` スクリプトを未改変で実行するため、出力はローカルのホストビルドと一致します。Unicode 範囲プリセットや CLI 変換の詳細は [docs/sd-card-fonts.md](./docs/sd-card-fonts.md)（英語）を参照してください。
 
 ---
 
@@ -234,7 +234,7 @@ CrossPoint Reader は RAM 使用量を最小化するため、データを積極
 └── recent.json          # 最近の書籍リスト
 ```
 
-`/.crosspoint` を削除すると、キャッシュされた全メタデータがクリアされ、次回オープン時に完全に再生成されます。ファームウェアや Web UI 経由での書籍の削除・上書き・移動は、対応するキャッシュをクリアまたは再キー付けします。SD カードを手動で編集すると、古いキャッシュディレクトリが残る場合があります。
+`/.crosspoint` を削除すると、キャッシュされた全メタデータがクリアされ、次回オープン時に完全に再生成されます。ファームウェアや Web UI 経由で書籍を削除・上書き・移動すると、対応するキャッシュもクリア、またはハッシュに合わせて付け替えられます。SD カードを手動で編集すると、古いキャッシュディレクトリが残る場合があります。
 
 内部ファイル構造の詳細は [ファイルフォーマットドキュメント](./docs/file-formats.md)（英語）を参照してください。
 

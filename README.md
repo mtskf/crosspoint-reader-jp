@@ -11,11 +11,11 @@
 > - **Japanese UI translation** — the full menu/settings UI in Japanese (`lib/I18n/translations/japanese.yaml`).
 > - **Built-in CJK UI glyphs** — a sparse, UI-only 20px bitmap font baked into flash, so menus render in Japanese with no SD-card font setup. The reader's CJK-aware vertical metrics keep line spacing correct.
 >
-> **Limitation:** this localises the *UI* to Japanese. It does **not** add Japanese body-text typesetting for EPUB content — book text still depends on the book's own fonts (or [SD-card fonts](#custom-sd-card-fonts)).
->
 > **Get the Japanese build** from this fork's [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) — the official web flasher only carries upstream builds.
 >
 > **Flash it here:** https://crosspointreader.com/#flash-tools — connect your device via USB-C, select your model (X3 or X4), click **"Custom .bin"**, and upload the `firmware.bin` you downloaded from Releases. More options in [Install firmware](#install-firmware) below.
+>
+> **Limitation — add a book font:** this localises the *UI* to Japanese; it does **not** add Japanese body-text typesetting for EPUB content. Book text depends on the book's own fonts, so to read Japanese books add a [Japanese book font](#japanese-book-fonts) to the SD card.
 
 CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.
 
@@ -133,9 +133,32 @@ See [Development quick start](#development-quick-start) below.
 
 ---
 
-## Custom SD-card fonts
+## Japanese book fonts
 
-Convert your own TTF/OTF files into `.cpfont` files that load from the SD card. No firmware reflash is needed.
+The Japanese UI is built in, but **EPUB book text needs a Japanese font on the SD card** — the built-in fonts cover Latin only. Install one like this:
+
+1. Download a Japanese font — e.g. [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) via **Get font**.
+2. Generate `.cpfont` files with the [CrossPoint Font Builder](https://crosspointreader.com/fonts). Make sure the **Japanese / CJK** Unicode range is selected so kana and kanji are included. Noto Sans JP has no italic styles, so leave the italic / bold-italic slots empty — italic-tagged text falls back to an available style (the firmware has no synthetic italic), so no italic file is needed and nothing is garbled.
+3. On the X3/X4 SD card, copy the generated family folder into a `Fonts/` folder at the root (create it if it doesn't exist; the hidden `/.fonts/` folder is scanned too).
+4. Power on the reader and select the font in **Settings > Reader > Font Family**.
+
+The SD-card layout looks like this:
+
+```text
+/
+├── Fonts/
+│   └── NotoSansJP/
+│       ├── NotoSansJP_12.cpfont
+│       ├── NotoSansJP_14.cpfont
+│       ├── NotoSansJP_16.cpfont
+│       └── NotoSansJP_18.cpfont
+├── Books/
+└── ...
+```
+
+### Other custom fonts
+
+The same `.cpfont` workflow installs any TTF/OTF font (no firmware reflash needed):
 
 1. Go to https://crosspointreader.com/fonts and open the "SD-card font builder" form.
 2. Upload up to four styles (regular, bold, italic, bold-italic), set the family name, point sizes, and Unicode range.
@@ -143,7 +166,7 @@ Convert your own TTF/OTF files into `.cpfont` files that load from the SD card. 
 4. Copy them to your SD card under `/fonts/YourFont/` (or `/.fonts/YourFont/` to hide the folder).
 5. Select the font on the device from the font settings.
 
-Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build.
+Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build. For Unicode interval presets and CLI conversion, see [docs/sd-card-fonts.md](./docs/sd-card-fonts.md).
 
 ---
 
