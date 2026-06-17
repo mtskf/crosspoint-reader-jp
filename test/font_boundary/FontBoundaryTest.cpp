@@ -114,6 +114,8 @@ TEST_F(FontBoundaryTest, AdvanceIsAdditiveAcrossBoundary) {
 
     EXPECT_GT(advA,   0) << "Latin advance must be > 0";
     EXPECT_GT(advCJK, 0) << "CJK advance must be > 0";
+    EXPECT_EQ(family.resolveGlyph(0x65E5u).data, &cjk_ui_20_font_data)
+        << "U+65E5 must resolve to the CJK fallback, not the primary replacement (non-vacuity)";
     EXPECT_EQ(advBoth, advA + advCJK)
         << "Advance must be additive across Latin-CJK boundary";
 }
@@ -131,29 +133,29 @@ TEST_F(FontBoundaryTest, CjkDataHasNullKernAndLigatureTables) {
 // This pins the invariant that the resolver's per-glyph summing always
 // agrees with any future batch-measurement path.
 TEST_F(FontBoundaryTest, AdvanceAdditiveAtAllBoundaryPatterns) {
-    // Helper lambda to sum advance for each codepoint individually.
-    auto decomposeAndSum = [&](const char* s) -> int {
-        int total = 0;
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(s);
-        uint32_t cp;
-        while ((cp = utf8NextCodepoint(&p))) {
-            const auto r = family.resolveGlyph(cp);
-            if (r.glyph) total += fp4::toPixel(r.glyph->advanceX);
-        }
-        return total;
-    };
+    // Non-vacuity: the whole point of these patterns is the Latin->CJK transition,
+    // which only exercises the resolver's fallback chain if U+65E5 actually reaches
+    // the CJK fallback (a wide glyph) rather than the primary's replacement box. Pin
+    // that here so the additivity checks below fail if the fallback stops being reached.
+    EXPECT_EQ(family.resolveGlyph(0x65E5u).data, &cjk_ui_20_font_data)
+        << "U+65E5 must resolve to the CJK fallback, not the primary replacement (non-vacuity)";
 
-    // Patterns: A日, 日A, A 日, 日 A. Note: U+0020 (space) is NOT in the primary's
-    // intervals, so it resolves to the replacement glyph — additivity still holds
-    // because measureAdvance and decomposeAndSum walk the same resolver path.
-    const char* patterns[] = {
-        "A\xe6\x97\xa5",         // A日
-        ("\xe6\x97\xa5""A"),       // 日A
-        "A \xe6\x97\xa5",        // A <space> 日 (space -> replacement glyph)
-        "\xe6\x97\xa5 A",        // 日 <space> A (space -> replacement glyph)
+    // Each pattern is split at its Latin<->CJK boundary into {left, whole-from-left}.
+    // measureAdvance(whole) == measureAdvance(left) + measureAdvance(right) genuinely
+    // tests that no cross-boundary adjustment (kerning/ligature) is applied at the
+    // Latin/CJK seam — unlike a per-glyph self-sum, this can fail if such an adjustment
+    // is ever introduced. Space (U+0020) is not in the primary's intervals so it resolves
+    // to the replacement glyph; additivity still holds across the seam regardless.
+    struct BoundarySplit { const char* whole; const char* left; const char* right; };
+    const BoundarySplit splits[] = {
+        {"A\xe6\x97\xa5",   "A",   "\xe6\x97\xa5"},   // A | 日
+        {"\xe6\x97\xa5""A", "\xe6\x97\xa5", "A"},     // 日 | A
+        {"A \xe6\x97\xa5",  "A ",  "\xe6\x97\xa5"},   // "A " | 日
+        {"\xe6\x97\xa5 A",  "\xe6\x97\xa5", " A"},    // 日 | " A"
     };
-    for (const char* s : patterns) {
-        EXPECT_EQ(measureAdvance(family, s), decomposeAndSum(s))
-            << "Advance must be additive for pattern: " << s;
+    for (const auto& s : splits) {
+        EXPECT_EQ(measureAdvance(family, s.whole),
+                  measureAdvance(family, s.left) + measureAdvance(family, s.right))
+            << "Advance must be additive across the Latin/CJK boundary for pattern: " << s.whole;
     }
 }

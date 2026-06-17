@@ -70,7 +70,8 @@ class EpdFontFamily {
       assert(f->data->glyphMissHandler == nullptr &&
              "setFallback: ring-buffer-backed fonts (glyphMissHandler != nullptr) "
              "are unsafe with the resolver's pointer-identity miss detection. "
-             "If you need SD-backed fallback, implement Option A (lookupGlyph) first.");
+             "If you need SD-backed fallback, use an SD-safe lookup that does not "
+             "rely on pointer-identity miss detection.");
     }
     fallback_ = f;
   }

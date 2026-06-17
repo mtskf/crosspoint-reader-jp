@@ -48,7 +48,9 @@ ResolvedGlyph EpdFontFamily::resolveGlyph(const uint32_t cp, const Style style) 
 
   // Family with fallback: pointer-identity miss detection is safe HERE because
   // fallback is only registered on UI fonts (built-in static tables, no
-  // glyphMissHandler). See "Design decision" note in the brief for rationale.
+  // glyphMissHandler), so getGlyph(REPLACEMENT_GLYPH) returns a stable pointer
+  // that the subsequent getGlyph(cp) cannot invalidate. setFallback() asserts
+  // this precondition (glyphMissHandler == nullptr) for both fonts.
   const EpdGlyph* replacement = primary->getGlyph(REPLACEMENT_GLYPH);
   const EpdGlyph* g = primary->getGlyph(cp);
 

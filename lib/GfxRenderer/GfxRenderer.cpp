@@ -230,10 +230,14 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   const uint8_t height = glyph->height;
   const int left = glyph->left;
   const int top = glyph->top;
-  // Ascender comes directly from the resolved EpdFontData. CJK glyphs from the fallback
-  // font carry the fallback's ascender (and standard EpdFontData bitmap format), so no
-  // special CJK casing is needed — the normal 1-bit/2-bit blitter below handles them.
-  const int rotatedAscender = static_cast<int>(fontData->ascender);
+  // Rotated path uses the FAMILY ascender (getMaxAscender = max(primary, fallback)) as a
+  // SHARED baseline origin — matching the row height the line reserves via getFontAscenderSize.
+  // Every glyph on a rotated mixed Latin/CJK line then sits on one common baseline. Using the
+  // per-glyph resolved ascender instead would misalign CJK (fallback ascender) vs Latin (primary
+  // ascender) glyphs whose own font ascender is below the line ascender. Reader/body fonts have
+  // no fallback, so getMaxAscender == primary.ascender and their rotated rendering is unchanged.
+  // The non-rotated path is baseline-relative (cursorY - top), so it needs no ascender at all.
+  const int rotatedAscender = fontFamily.getMaxAscender(style);
 
   // Tiled-grayscale band culling: if this glyph's physical y-extent is entirely
   // outside the active strip, skip it before the expensive bitmap decode. This
@@ -259,7 +263,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     // For Rotated: outer loop advances screenX, inner loop advances screenY (in reverse)
     int outerBase, innerBase;
     if constexpr (rotation == TextRotation::Rotated90CW) {
-      outerBase = cursorX + fontData->ascender - top;  // screenX = outerBase + glyphY
+      outerBase = cursorX + rotatedAscender - top;  // screenX = outerBase + glyphY
       innerBase = cursorY - left;                      // screenY = innerBase - glyphX
     } else {
       outerBase = cursorY - top;   // screenY = outerBase + glyphY
