@@ -15,6 +15,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <builtinFonts/all.h>
+#include <builtinFonts/cjk_ui_20.h>
 
 #include <cstring>
 
@@ -106,6 +107,10 @@ EpdFontFamily ui10FontFamily(&ui10RegularFont, &ui10BoldFont);
 EpdFont ui12RegularFont(&ubuntu_12_regular);
 EpdFont ui12BoldFont(&ubuntu_12_bold);
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
+
+// CJK UI fallback: 20px bitmap font registered as fallback on all UI EpdFontFamily objects.
+// Data is in flash (PROGMEM), contributing ~210KB to flash with zero DRAM overhead.
+EpdFont cjkUi20Font(&cjk_ui_20_font_data);
 
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
@@ -292,6 +297,13 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
 #endif  // OMIT_FONTS
+
+  // Register CJK fallback on all UI font families. setFallback() stores a pointer;
+  // EpdFontFamily::resolveGlyph() consults it when the primary misses a codepoint.
+  // Reader body-text families are NOT registered here (scope guard: reader path unchanged).
+  smallFontFamily.setFallback(&cjkUi20Font);
+  ui10FontFamily.setFallback(&cjkUi20Font);
+  ui12FontFamily.setFallback(&cjkUi20Font);
 
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
