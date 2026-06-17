@@ -1,5 +1,17 @@
 #pragma once
 #include "EpdFont.h"
+#include <cassert>
+
+/// A glyph resolved from a font family's primary or fallback chain.
+/// `glyph` and `data` are always from the same EpdFontData (source-aligned).
+/// Never call getGlyph() + getData() separately — use resolveGlyph() instead.
+struct ResolvedGlyph {
+    const EpdGlyph*    glyph;  ///< May be nullptr if primary lacks REPLACEMENT_GLYPH (bare font).
+                               ///< CALLERS MUST null-check before dereferencing.
+    const EpdFontData* data;   ///< Always the EpdFontData that owns `glyph`.
+                               ///< Non-null even when glyph is nullptr (points to primary data).
+                               ///< Use data metrics (advanceY, ascender) as safe fallback when glyph is null.
+};
 
 class EpdFontFamily {
  public:
@@ -43,11 +55,46 @@ class EpdFontFamily {
     return false;
   }
 
+  /// Register a fallback EpdFont consulted when the primary misses a codepoint.
+  /// Replaces any previously registered fallback. Pass nullptr to clear.
+  ///
+  /// PRECONDITION: `f` (and the EpdFontFamily's primary fonts) MUST use static
+  /// glyph storage — `f->data->glyphMissHandler == nullptr`. The resolver's
+  /// pointer-identity miss detection (in `resolveGlyph`) calls
+  /// `getGlyph(REPLACEMENT_GLYPH)` before `getGlyph(cp)`; with ring-buffer-backed
+  /// SD card fonts, the second call invalidates the first pointer and the miss
+  /// detection silently corrupts. The assert below structurally enforces this
+  /// constraint instead of leaving it to documentation.
+  void setFallback(const EpdFont* f) {
+    if (f) {
+      assert(f->data->glyphMissHandler == nullptr &&
+             "setFallback: ring-buffer-backed fonts (glyphMissHandler != nullptr) "
+             "are unsafe with the resolver's pointer-identity miss detection. "
+             "If you need SD-backed fallback, implement Option A (lookupGlyph) first.");
+    }
+    fallback_ = f;
+  }
+
+  /// Resolve a codepoint to a glyph+data pair from primary or fallback chain.
+  /// The returned pair is always source-aligned: glyph and data come from the
+  /// same EpdFontData. If both primary and fallback miss, returns primary's
+  /// REPLACEMENT_GLYPH with primary's data.
+  ResolvedGlyph resolveGlyph(uint32_t cp, Style style = REGULAR) const;
+
+  /// Returns the maximum ascender across primary (and fallback when present).
+  /// Task 6 upgrades this stub to max(primary, fallback).
+  int getMaxAscender(Style style = REGULAR) const;
+
+  /// Returns the maximum advanceY across primary (and fallback when present).
+  /// Task 6 upgrades this stub to max(primary, fallback).
+  int getMaxAdvanceY(Style style = REGULAR) const;
+
  private:
   const EpdFont* regular;
   const EpdFont* bold;
   const EpdFont* italic;
   const EpdFont* boldItalic;
+  const EpdFont* fallback_ = nullptr;  ///< Optional fallback chain (e.g. CJK font)
 
   const EpdFont* getFont(Style style) const;
 };
