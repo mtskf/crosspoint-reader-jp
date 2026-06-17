@@ -38,8 +38,8 @@ void EpdFont::getTextBoundsImpl(const char* string, const int startX, const int 
 
     // Family-aware resolution: with a family, glyph+data come from the primary or fallback
     // chain (source-aligned). Without a family, fall back to this single font's getGlyph.
-    const ResolvedGlyph r = family ? family->resolveGlyph(cp, static_cast<EpdFontFamily::Style>(style))
-                                   : ResolvedGlyph{getGlyph(cp), data};
+    const ResolvedGlyph r =
+        family ? family->resolveGlyph(cp, static_cast<EpdFontFamily::Style>(style)) : ResolvedGlyph{getGlyph(cp), data};
     const EpdGlyph* glyph = r.glyph;
     const EpdFontData* glyphData = r.data;  // owner data, used for the cross-font kern guard
     if (!glyph) {

@@ -264,7 +264,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     int outerBase, innerBase;
     if constexpr (rotation == TextRotation::Rotated90CW) {
       outerBase = cursorX + rotatedAscender - top;  // screenX = outerBase + glyphY
-      innerBase = cursorY - left;                      // screenY = innerBase - glyphX
+      innerBase = cursorY - left;                   // screenY = innerBase - glyphX
     } else {
       outerBase = cursorY - top;   // screenY = outerBase + glyphY
       innerBase = cursorX + left;  // screenX = innerBase + glyphX

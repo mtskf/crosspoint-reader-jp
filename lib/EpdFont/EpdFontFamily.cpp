@@ -1,6 +1,7 @@
 #include "EpdFontFamily.h"
 // REPLACEMENT_GLYPH (0xFFFD) is provided by Utf8.h as a macro — do NOT redeclare it here.
 #include <Utf8.h>
+
 #include <algorithm>
 
 const EpdFont* EpdFontFamily::getFont(const Style style) const {

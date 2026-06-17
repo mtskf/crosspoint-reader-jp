@@ -1,16 +1,17 @@
 #pragma once
-#include "EpdFont.h"
 #include <cassert>
+
+#include "EpdFont.h"
 
 /// A glyph resolved from a font family's primary or fallback chain.
 /// `glyph` and `data` are always from the same EpdFontData (source-aligned).
 /// Never call getGlyph() + getData() separately — use resolveGlyph() instead.
 struct ResolvedGlyph {
-    const EpdGlyph*    glyph;  ///< May be nullptr if primary lacks REPLACEMENT_GLYPH (bare font).
-                               ///< CALLERS MUST null-check before dereferencing.
-    const EpdFontData* data;   ///< Always the EpdFontData that owns `glyph`.
-                               ///< Non-null even when glyph is nullptr (points to primary data).
-                               ///< Use data metrics (advanceY, ascender) as safe fallback when glyph is null.
+  const EpdGlyph* glyph;    ///< May be nullptr if primary lacks REPLACEMENT_GLYPH (bare font).
+                            ///< CALLERS MUST null-check before dereferencing.
+  const EpdFontData* data;  ///< Always the EpdFontData that owns `glyph`.
+                            ///< Non-null even when glyph is nullptr (points to primary data).
+                            ///< Use data metrics (advanceY, ascender) as safe fallback when glyph is null.
 };
 
 class EpdFontFamily {
