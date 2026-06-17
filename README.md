@@ -91,14 +91,13 @@ USB port or browser before assuming the device is locked. Only reach for the unl
 
 ### Web installer (recommended)
 
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), and choose an official CrossPoint release.
+The Japanese build is not in the web flasher's release picker — you upload it as a custom `.bin`.
 
-### Web installer (specific version)
+1. Download the Japanese build's `firmware.bin` from this fork's [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases).
+2. Connect your device to your computer via USB-C and wake/unlock the device.
+3. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), click **"Custom .bin"**, and upload the `firmware.bin` you downloaded.
 
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Download a `firmware.bin` from this fork's [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) (the Japanese build), a local build, or a continuous integration artifact.
-3. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), click "Custom .bin" and upload a `firmware.bin`.
+> The "official CrossPoint release" options in the flasher carry **upstream builds only** (not the Japanese UI). Always upload the `firmware.bin` from this fork's Releases via "Custom .bin".
 
 ### Revert to Official Firmware
 

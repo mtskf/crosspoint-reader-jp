@@ -15,7 +15,7 @@
 >
 > **日本語ビルドの入手:** このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) からダウンロードしてください。公式Webフラッシャーはアップストリームのビルドのみを配布しています。
 >
-> **書き込みはこちらから:** https://crosspointreader.com/#flash-tools — デバイスを USB-C で接続し、モデル（X3 または X4）を選択して **「Custom .bin」** をクリックし、Releases からダウンロードした `firmware.bin` をアップロードします。その他の方法は下記 [ファームウェアのインストール](#ファームウェアのインストール) を参照してください。
+> **書き込みはこちらから:** <https://crosspointreader.com/#flash-tools> — デバイスを USB-C で接続し、モデル（X3 または X4）を選択して **「Custom .bin」** をクリックし、Releases からダウンロードした `firmware.bin` をアップロードします。その他の方法は下記 [ファームウェアのインストール](#ファームウェアのインストール) を参照してください。
 
 CrossPoint はオープンソースの電子書籍リーダーファームウェアです。コミュニティによって開発され、完全にハック可能で、永久に無料です。「デバイスはメーカーが決めたことではなく、あなたが望むことをすべきだ」と信じる開発者と読者のコミュニティによって維持されています。
 
@@ -67,7 +67,7 @@ CrossPoint はオープンソースの電子書籍リーダーファームウェ
 
 サードパーティストア（例: AliExpress）で購入した一部の Xteink ユニットは、工場出荷時に USB 書き込みがロックされています。
 デバイスがロックされている場合、CrossPoint を書き込む前に
-https://crosspointreader.com/#unlock-tool で提供されている **Xteink Unlocker** ツールを使用する必要があります。
+<https://crosspointreader.com/#unlock-tool> で提供されている **Xteink Unlocker** ツールを使用する必要があります。
 
 **xteink.com から直接購入した場合、このツールは不要です。** それらのユニットはロックされていません。
 
@@ -85,18 +85,17 @@ https://crosspointreader.com/#unlock-tool で提供されている **Xteink Unlo
 
 ### Web インストーラ（推奨）
 
-1. デバイスを USB-C でコンピュータに接続し、デバイスをスリープ解除/アンロックする
-2. https://crosspointreader.com/#flash-tools にアクセスし、デバイス（X3 または X4）を選択して、公式 CrossPoint リリースを選ぶ。
+日本語ビルドは Web フラッシャーのリリース選択肢には含まれません。カスタム `.bin` としてアップロードします。
 
-### Web インストーラ（特定バージョン）
+1. このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases) から日本語ビルドの `firmware.bin` をダウンロードする。
+2. デバイスを USB-C でコンピュータに接続し、デバイスをスリープ解除/アンロックする。
+3. <https://crosspointreader.com/#flash-tools> にアクセスし、デバイス（X3 または X4）を選択し、**「Custom .bin」** をクリックして、ダウンロードした `firmware.bin` をアップロードする。
 
-1. デバイスを USB-C でコンピュータに接続し、デバイスをスリープ解除/アンロックする
-2. このフォークの [Releases](https://github.com/mtskf/crosspoint-reader-jp/releases)（日本語ビルド）、ローカルビルド、または CI アーティファクトから `firmware.bin` をダウンロードする。
-3. https://crosspointreader.com/#flash-tools にアクセスし、デバイス（X3 または X4）を選択し、「Custom .bin」をクリックして `firmware.bin` をアップロードする。
+> フラッシャーの「公式 CrossPoint リリース」の選択肢には**アップストリームのビルドのみ**が並びます（日本語UIではありません）。必ずこのフォークの Releases からダウンロードした `firmware.bin` を「Custom .bin」でアップロードしてください。
 
 ### 公式ファームウェアへの復元
 
-公式ファームウェアに戻すには、https://crosspointreader.com/#flash-tools を使って最新の公式ファームウェアを書き込むこともできます。
+公式ファームウェアに戻すには、<https://crosspointreader.com/#flash-tools> を使って最新の公式ファームウェアを書き込むこともできます。
 
 ### コマンドライン
 
@@ -106,15 +105,15 @@ https://crosspointreader.com/#unlock-tool で提供されている **Xteink Unlo
 pip install esptool
 ```
 
-2. このフォークの [リリースページ](https://github.com/mtskf/crosspoint-reader-jp/releases) から `firmware.bin` をダウンロードする。
-3. デバイスを USB-C で接続する。
-4. デバイスのポートを確認する。Linux では接続後に `dmesg` を実行。macOS では:
+1. このフォークの [リリースページ](https://github.com/mtskf/crosspoint-reader-jp/releases) から `firmware.bin` をダウンロードする。
+2. デバイスを USB-C で接続する。
+3. デバイスのポートを確認する。Linux では接続後に `dmesg` を実行。macOS では:
 
 ```bash
 log stream --predicate 'subsystem == "com.apple.iokit"' --info
 ```
 
-5. 書き込み:
+1. 書き込み:
 
 ```bash
 esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
@@ -132,7 +131,7 @@ esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 
 
 手持ちの TTF/OTF ファイルを、SD カードから読み込める `.cpfont` ファイルに変換できます。ファームウェアの再書き込みは不要です。
 
-1. https://crosspointreader.com/fonts にアクセスし、「SD-card font builder」フォームを開く。
+1. <https://crosspointreader.com/fonts> にアクセスし、「SD-card font builder」フォームを開く。
 2. 最大 4 スタイル（regular、bold、italic、bold-italic）をアップロードし、ファミリー名・ポイントサイズ・Unicode 範囲を設定する。
 3. 生成された `.cpfont` ファイルをダウンロードする。
 4. SD カードの `/fonts/YourFont/`（フォルダを隠す場合は `/.fonts/YourFont/`）にコピーする。
