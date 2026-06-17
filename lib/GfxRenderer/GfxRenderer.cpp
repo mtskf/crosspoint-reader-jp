@@ -1492,8 +1492,8 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
     return 0;
   }
 
-  // getMaxAscender returns the primary's ascender today (Task 4 stub); Task 6 upgrades it
-  // to max(primary, fallback) so CJK-bearing UI fonts reserve the taller box family-wide.
+  // getMaxAscender returns max(primary, fallback) ascender, so CJK-bearing UI fonts
+  // reserve the taller box family-wide; Latin-only fonts (no fallback) are unchanged.
   return fontIt->second.getMaxAscender(EpdFontFamily::REGULAR);
 }
 
@@ -1504,8 +1504,8 @@ int GfxRenderer::getLineHeight(const int fontId) const {
     return 0;
   }
 
-  // getMaxAdvanceY returns the primary's advanceY today (Task 4 stub); Task 6 upgrades it
-  // to max(primary, fallback) so line spacing accommodates the taller CJK fallback.
+  // getMaxAdvanceY returns max(primary, fallback) advanceY, so line spacing accommodates
+  // the taller CJK fallback; Latin-only fonts (no fallback) are unchanged.
   return fontIt->second.getMaxAdvanceY(EpdFontFamily::REGULAR);
 }
 
@@ -1515,8 +1515,8 @@ int GfxRenderer::getTextHeight(const int fontId) const {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
-  // getMaxAscender returns the primary's ascender today (Task 4 stub); Task 6 upgrades it
-  // to max(primary, fallback) so the bounding box covers CJK glyphs in UI fonts.
+  // getMaxAscender returns max(primary, fallback) ascender, so the bounding box covers
+  // CJK glyphs in UI fonts; Latin-only fonts (no fallback) are unchanged.
   return fontIt->second.getMaxAscender(EpdFontFamily::REGULAR);
 }
 

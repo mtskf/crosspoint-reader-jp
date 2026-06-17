@@ -9,7 +9,6 @@ target_link_libraries(FontResolverTest PRIVATE crosspoint_test_common GTest::gte
 
 target_include_directories(FontResolverTest PRIVATE
   ${REPO_ROOT}/lib/EpdFont
-  ${REPO_ROOT}/lib/Utf8
-  ${REPO_ROOT}/test/support)  # pgmspace.h stub (EpdFont.cpp transitively pulls cjk_ui_font_20.h)
+  ${REPO_ROOT}/lib/Utf8)
 
 gtest_discover_tests(FontResolverTest)
