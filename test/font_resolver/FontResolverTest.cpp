@@ -127,6 +127,53 @@ TEST_F(FontResolverTest, ResolveReplacementGlyphItself) {
     EXPECT_EQ(r.data, &primaryData_);
 }
 
+// Sum per-codepoint advances via the resolver chain. Mirrors GfxRenderer::getTextAdvanceX
+// but at the EpdFontFamily level (which has no getTextAdvanceX method). No kern is applied:
+// the fixture's primary kernMatrix is null, and the only multi-glyph strings here cross the
+// ASCII/CJK font boundary where kern is 0 by spec — so a plain advance sum is exact.
+static int measureAdvance(const EpdFontFamily& fam, const char* s) {
+  int total = 0;
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(s);
+  uint32_t cp;
+  while ((cp = utf8NextCodepoint(&p)) != 0) {
+    const auto r = fam.resolveGlyph(cp);
+    if (r.glyph) total += r.glyph->advanceX >> 4;  // 12.4 fixed-point -> integer pixels
+  }
+  return total;
+}
+
+TEST_F(FontResolverTest, GetTextBoundsAgreesWithGetTextAdvanceForCjk) {
+  // Mixed string: primary-only ASCII ('A') + fallback-only CJK (U+65E5 '日').
+  // U+65E5 is the codepoint the fixture's CJK fallback actually covers — any other CJK
+  // codepoint would fall through to the replacement glyph and pass vacuously.
+  // getTextBounds (now routed through getTextBoundsImpl + the resolver) must measure the
+  // CJK glyph via the fallback, so its width must equal the per-glyph advance sum.
+  const char* text = "A\xE6\x97\xA5";  // "A日" (A + U+65E5)
+  int boundsW = 0, boundsH = 0;
+  familyWithFallback_.getTextBounds(text, &boundsW, &boundsH);
+  EXPECT_EQ(boundsW, measureAdvance(familyWithFallback_, text))
+      << "getTextBounds width must match the resolver advance sum for mixed ASCII+CJK";
+  EXPECT_GT(boundsH, 0) << "height must be positive for a non-empty string";
+}
+
+TEST_F(FontResolverTest, MeasurementMatchesDrawForMixedAsciiCjk) {
+  // Additivity across the ASCII/CJK boundary (no kern crosses it, so the sum is exact).
+  const int fullW = measureAdvance(familyWithFallback_, "A\xE6\x97\xA5");
+  const int latinW = measureAdvance(familyWithFallback_, "A");
+  const int cjkW = measureAdvance(familyWithFallback_, "\xE6\x97\xA5");
+  EXPECT_EQ(fullW, latinW + cjkW);
+
+  // Non-vacuity: the CJK advance MUST equal the fallback glyph width (20), proving the
+  // resolver reached the fallback. If it equalled the replacement width (6), the fallback
+  // path was never taken and the additivity above would pass for the wrong reason.
+  EXPECT_EQ(cjkW, 20) << "CJK advance must equal fallback glyph width, not replacement";
+
+  // Independent cross-check: getTextBounds (resolver path) must agree with the advance sum.
+  int boundsW = 0, boundsH = 0;
+  familyWithFallback_.getTextBounds("A\xE6\x97\xA5", &boundsW, &boundsH);
+  EXPECT_EQ(fullW, boundsW) << "getTextAdvance sum and getTextBounds width must agree";
+}
+
 TEST(FontResolver, MissingGlyphReturnsNullWithPrimaryData) {
     // Build a primary with no REPLACEMENT_GLYPH (bare font: only covers 'A', no U+FFFD)
     // and no fallback. resolveGlyph(cp not in font) must return {nullptr, primary->data}

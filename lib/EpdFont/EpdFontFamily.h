@@ -34,26 +34,26 @@ class EpdFontFamily {
                          const EpdFont* boldItalic = nullptr)
       : regular(regular), bold(bold), italic(italic), boldItalic(boldItalic) {}
   ~EpdFontFamily() = default;
-  void getTextDimensions(const char* string, int* w, int* h, Style style = REGULAR) const;
+
+  // Measure text through the primary + fallback chain so CJK codepoints use the fallback
+  // font's metrics instead of the replacement box. Delegates to EpdFont::getTextBoundsImpl
+  // (which carries all kerning/ligature/combining/fp4-rounding semantics) passing `this`
+  // as the resolver. `style` is cast to int at the EpdFont boundary (EpdFont.h cannot see Style).
+  void getTextBounds(const char* string, int* w, int* h, Style style = REGULAR) const {
+    int minX = 0, minY = 0, maxX = 0, maxY = 0;
+    getFont(style)->getTextBoundsImpl(string, 0, 0, &minX, &minY, &maxX, &maxY, this, static_cast<int>(style));
+    if (w) *w = maxX - minX;
+    if (h) *h = maxY - minY;
+  }
+
+  void getTextDimensions(const char* string, int* w, int* h, Style style = REGULAR) const {
+    getTextBounds(string, w, h, style);
+  }
+
   const EpdFontData* getData(Style style = REGULAR) const;
   const EpdGlyph* getGlyph(uint32_t cp, Style style = REGULAR) const;
   int8_t getKerning(uint32_t leftCp, uint32_t rightCp, Style style = REGULAR) const;
   uint32_t applyLigatures(uint32_t cp, const char*& text, Style style = REGULAR) const;
-
-  // True iff any participating variant has CJK UI fallback enabled. We check every
-  // non-null variant (not just `regular`) so an asymmetric configuration — e.g. flag
-  // set on `bold` but not `regular` — still triggers the family-level metric inflation
-  // in GfxRenderer. Per-glyph dispatch in EpdFont::getGlyph consults its own flag, so
-  // the metric path here must err on the side of "any variant might synthesize a CJK
-  // glyph, so reserve the 20px box". src/main.cpp sets the flag uniformly across all
-  // UI variants today; this guard catches a future-variant drift.
-  bool hasCjkUiFallback() const {
-    if (regular && regular->cjkUiFallbackEnabled()) return true;
-    if (bold && bold->cjkUiFallbackEnabled()) return true;
-    if (italic && italic->cjkUiFallbackEnabled()) return true;
-    if (boldItalic && boldItalic->cjkUiFallbackEnabled()) return true;
-    return false;
-  }
 
   /// Register a fallback EpdFont consulted when the primary misses a codepoint.
   /// Replaces any previously registered fallback. Pass nullptr to clear.

@@ -292,11 +292,6 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
 #endif  // OMIT_FONTS
-  smallFont.enableCjkUiFallback();
-  ui10RegularFont.enableCjkUiFallback();
-  ui10BoldFont.enableCjkUiFallback();
-  ui12RegularFont.enableCjkUiFallback();
-  ui12BoldFont.enableCjkUiFallback();
 
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);

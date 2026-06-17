@@ -4,10 +4,12 @@
 
 #include <algorithm>
 
-#include "CjkUiFallback.h"
+// Safe in a .cpp translation unit: EpdFontFamily.h includes EpdFont.h, but this is
+// not a header, so there is no circular include. Needed for resolveGlyph + the Style cast.
+#include "EpdFontFamily.h"
 
-void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
-                            int* maxY) const {
+void EpdFont::getTextBoundsImpl(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
+                                int* maxY, const EpdFontFamily* family, const int style) const {
   *minX = startX;
   *minY = startY;
   *maxX = startX;
@@ -24,14 +26,22 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
   int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
   uint32_t cp;
   uint32_t prevCp = 0;
+  const EpdFontData* prevData = nullptr;  // EpdFontData that owned the previous base glyph
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string)))) {
     const bool isCombining = utf8IsCombiningMark(cp);
 
     if (!isCombining) {
+      // Ligature substitution uses THIS font's ligaturePairs (no-op when null, as for
+      // the CJK fallback font), so it is unconditional and matches the single-font path.
       cp = applyLigatures(cp, string);
     }
 
-    const EpdGlyph* glyph = getGlyph(cp);
+    // Family-aware resolution: with a family, glyph+data come from the primary or fallback
+    // chain (source-aligned). Without a family, fall back to this single font's getGlyph.
+    const ResolvedGlyph r = family ? family->resolveGlyph(cp, static_cast<EpdFontFamily::Style>(style))
+                                   : ResolvedGlyph{getGlyph(cp), data};
+    const EpdGlyph* glyph = r.glyph;
+    const EpdFontData* glyphData = r.data;  // owner data, used for the cross-font kern guard
     if (!glyph) {
       // Keep cursor movement stable when a base glyph is missing, but don't attach subsequent
       // combining marks to stale base metrics.
@@ -49,7 +59,14 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
     const int raiseBy = isCombining ? combiningMark::raiseAboveBase(glyph->top, glyph->height, lastBaseTop) : 0;
 
     if (!isCombining && prevCp != 0) {
-      const auto kernFP = getKerning(prevCp, cp);  // 4.4 fixed-point kern
+      // `prevData == glyphData` means the previous and current base glyphs came from the
+      // SAME EpdFontData (both primary, or both fallback). getKerning queries THIS font's
+      // (the primary's) kern table, so cross-font pairs (Latin-CJK, CJK-Latin) must get 0 —
+      // the primary's table has no entries for them anyway, but the guard makes the intent
+      // explicit and avoids a wrong-table lookup if a fallback ever carries its own table.
+      // Style-aware fallback kerning is out of scope for P5 (documented known limitation).
+      const auto kernFP = (prevData == glyphData) ? getKerning(prevCp, cp)  // same EpdFontData — kern applies
+                                                  : int8_t{0};              // cross-font boundary — kern = 0
       lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP);
     }
 
@@ -69,6 +86,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
       lastBaseTop = glyph->top;
       prevAdvanceFP = glyph->advanceX;  // 12.4 fixed-point
       prevCp = cp;
+      prevData = glyphData;  // remember the owner so the next iteration's kern guard works
     }
   }
 }
@@ -181,19 +199,9 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
     if (loaded) return loaded;
   }
 
-  // UI fonts: fall back to the built-in 20px CJK UI font for true-CJK codepoints
-  // before showing the replacement box. Gated so ASCII/Latin never routes here.
-  //
-  // Precedence contract: when both cjkUiFallback_ and glyphMissHandler are set on the
-  // same font, the SD handler runs first and the built-in CJK font is consulted only
-  // when the SD handler returns nullptr. UI fonts in this firmware do not carry a
-  // glyphMissHandler today; if a future custom SD UI font sets both, an SD I/O failure
-  // would be silently shadowed by the built-in CJK glyph for any CJK codepoint. Keep
-  // the two in sync.
-  if (cjkUiFallback_ && CjkUiFallback::shouldUse(cp)) {
-    return CjkUiFallback::makeGlyph(cp);
-  }
-
+  // CJK fallback is no longer dispatched here. EpdFontFamily::resolveGlyph owns the
+  // primary -> fallback chain; this single-font lookup just reports a miss via the
+  // replacement glyph below.
   if (cp != REPLACEMENT_GLYPH) {
     return getGlyph(REPLACEMENT_GLYPH);
   }

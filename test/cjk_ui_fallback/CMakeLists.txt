@@ -1,9 +1,4 @@
-add_executable(CjkUiFallbackTest
-  CjkUiFontTest.cpp
-  EpdFontDispatchTest.cpp
-  ${REPO_ROOT}/lib/EpdFont/EpdFont.cpp
-  ${REPO_ROOT}/lib/Utf8/Utf8.cpp)
-target_link_libraries(CjkUiFallbackTest PRIVATE crosspoint_test_common GTest::gtest_main)
-target_include_directories(CjkUiFallbackTest PRIVATE
-  ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/Utf8 ${REPO_ROOT}/test/support)
-gtest_discover_tests(CjkUiFallbackTest)
+# P4 synthesizer tests removed (CjkUiFallback machinery deleted in P5 Task 5).
+# P5 coverage now lives in test/font_resolver/ (resolveGlyph + measurement) and
+# test/cjk_font_parity/ (converted CJK font asset).
+# This directory is kept so the parent add_subdirectory() stays valid; it builds no target.

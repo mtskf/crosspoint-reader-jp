@@ -20,10 +20,6 @@ const EpdFont* EpdFontFamily::getFont(const Style style) const {
   return regular;
 }
 
-void EpdFontFamily::getTextDimensions(const char* string, int* w, int* h, const Style style) const {
-  getFont(style)->getTextDimensions(string, w, h);
-}
-
 const EpdFontData* EpdFontFamily::getData(const Style style) const { return getFont(style)->data; }
 
 const EpdGlyph* EpdFontFamily::getGlyph(const uint32_t cp, const Style style) const {

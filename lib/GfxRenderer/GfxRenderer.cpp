@@ -6,11 +6,9 @@
 #include <Logging.h>
 #include <SdCardFont.h>
 #include <Utf8.h>
-#include <pgmspace.h>
 
 #include <algorithm>
 
-#include "CjkUiFallback.h"  // resolves via lib/EpdFont include path
 #include "FontCacheManager.h"
 
 namespace {
@@ -29,11 +27,6 @@ const char* resolveVisualText(const char* text, std::string& visualBuffer, BidiU
 }  // namespace
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
-  // CJK UI fallback glyphs have a different bitmap format and are decoded by the blitter;
-  // they must never reach the generic decoders. Defensive: return null, never the CJK bitmap.
-  if (CjkUiFallback::isSynthesized(glyph)) {
-    return nullptr;
-  }
   if (fontData->groups != nullptr) {
     auto* fd = fontCacheManager_ ? fontCacheManager_->getDecompressor() : nullptr;
     if (!fd) {
@@ -155,13 +148,11 @@ enum class TextRotation { None, Rotated90CW };
 static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMode renderMode,
                              const EpdFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
                              const bool pixelState, const EpdFontFamily::Style style) {
-  const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
+  const auto resolved = fontFamily.resolveGlyph(cp, style);
+  const EpdGlyph* glyph = resolved.glyph;
+  const EpdFontData* fontData = resolved.data;
   if (!glyph) return;
-  // Built-in CJK UI glyphs have a different bitmap format and are never scaled
-  // (UI fonts don't use SUP/SUB). Skip rather than mis-decode the packed layout.
-  if (CjkUiFallback::isSynthesized(glyph)) return;
 
-  const EpdFontData* fontData = fontFamily.getData(style);
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
   if (!bitmap) return;
 
@@ -226,28 +217,23 @@ template <TextRotation rotation = TextRotation::None>
 static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode renderMode,
                            const EpdFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
                            const bool pixelState, const EpdFontFamily::Style style) {
-  const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
+  const auto resolved = fontFamily.resolveGlyph(cp, style);
+  const EpdGlyph* glyph = resolved.glyph;
+  const EpdFontData* fontData = resolved.data;
   if (!glyph) {
     LOG_ERR("GFX", "No glyph for codepoint %d", cp);
     return;
   }
 
-  const EpdFontData* fontData = fontFamily.getData(style);
   const bool is2Bit = fontData->is2Bit;
-  const bool isSynth = CjkUiFallback::isSynthesized(glyph);
   const uint8_t width = glyph->width;
   const uint8_t height = glyph->height;
   const int left = glyph->left;
   const int top = glyph->top;
-  // For rotated synthesized CJK glyphs, the draw uses a baseline that matches the
-  // non-rotated path's getFontAscenderSize() floor (UI ascender raised to >= CJK_TOP
-  // when CJK fallback is on). The strip-cull below MUST use the same ascender so a
-  // CJK glyph never gets culled at a Y that doesn't match where it would draw. With
-  // current UI fonts (ascender >= 18) the floor never triggers, but a future smaller
-  // UI font with the CJK flag would otherwise silently drop CJK near strip boundaries.
-  const int rotatedAscender =
-      isSynth ? std::max(static_cast<int>(fontData->ascender), static_cast<int>(CjkUiFallback::CJK_TOP))
-              : static_cast<int>(fontData->ascender);
+  // Ascender comes directly from the resolved EpdFontData. CJK glyphs from the fallback
+  // font carry the fallback's ascender (and standard EpdFontData bitmap format), so no
+  // special CJK casing is needed — the normal 1-bit/2-bit blitter below handles them.
+  const int rotatedAscender = static_cast<int>(fontData->ascender);
 
   // Tiled-grayscale band culling: if this glyph's physical y-extent is entirely
   // outside the active strip, skip it before the expensive bitmap decode. This
@@ -264,46 +250,6 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     if (!renderer.glyphIntersectsStrip(gx0, gy0, gx0 + width - 1, gy0 + height - 1)) {
       return;
     }
-  }
-
-  if (isSynth) {
-    const uint8_t* cjk = CjkUiFont20::getCjkUiGlyph(glyph->dataOffset);
-    if (cjk == nullptr) {
-      // Unreachable today — shouldUse() gates on hasCjkUiGlyph(), so the bitmap must
-      // exist whenever a synthesized glyph reaches us. Log if the invariant breaks
-      // (future shouldUse refactor, mismatched generator) — every other glyph-miss
-      // path in this file logs, and a silent return would mask the regression as
-      // "invisible characters in UI labels".
-      LOG_ERR("GFX", "CJK fallback bitmap missing for U+%04X", (unsigned)glyph->dataOffset);
-      return;
-    }
-    constexpr int bpr = CjkUiFont20::CJK_UI_FONT_BYTES_PER_ROW;  // 3 (fixed 20px-wide storage)
-    int outerBase, innerBase;
-    if constexpr (rotation == TextRotation::Rotated90CW) {
-      outerBase = cursorX + rotatedAscender - top;  // screenX = outerBase + glyphY
-      innerBase = cursorY - left;                   // screenY = innerBase - glyphX
-    } else {
-      outerBase = cursorY - top;   // screenY = outerBase + glyphY
-      innerBase = cursorX + left;  // screenX = innerBase + glyphX
-    }
-    // Loop over glyph->width/height (== the synthesized advance box) so draw, strip-cull,
-    // and measurement all agree. bpr is the fixed 3-byte row stride of the 20px storage.
-    for (int glyphY = 0; glyphY < glyph->height; glyphY++) {
-      for (int glyphX = 0; glyphX < glyph->width; glyphX++) {
-        const uint8_t byte = pgm_read_byte(&cjk[glyphY * bpr + (glyphX >> 3)]);
-        if (!((byte >> (7 - (glyphX & 7))) & 1)) continue;
-        int screenX, screenY;
-        if constexpr (rotation == TextRotation::Rotated90CW) {
-          screenX = outerBase + glyphY;
-          screenY = innerBase - glyphX;
-        } else {
-          screenX = innerBase + glyphX;
-          screenY = outerBase + glyphY;
-        }
-        renderer.drawPixel(screenX, screenY, pixelState);  // same convention as the 1-bit Latin path
-      }
-    }
-    return;
   }
 
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
@@ -485,7 +431,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     }
 
     if (utf8IsCombiningMark(cp)) {
-      const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
+      const EpdGlyph* combiningGlyph = font.resolveGlyph(cp, style).glyph;
       if (!combiningGlyph) continue;
       const int raiseBy = combiningMark::raiseAboveBase(combiningGlyph->top, combiningGlyph->height, lastBaseTop);
       const int combiningX = combiningMark::centerOver(lastBaseX, lastBaseLeft, lastBaseWidth, combiningGlyph->left,
@@ -504,7 +450,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
       lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP);       // snap 12.4 fixed-point to nearest pixel
     }
 
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
+    const EpdGlyph* glyph = font.resolveGlyph(cp, style).glyph;
 
     lastBaseLeft = glyph ? glyph->left : 0;
     lastBaseWidth = glyph ? glyph->width : 0;
@@ -1453,7 +1399,7 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
     return 0;
   }
 
-  const EpdGlyph* spaceGlyph = fontIt->second.getGlyph(' ', style);
+  const EpdGlyph* spaceGlyph = fontIt->second.resolveGlyph(' ', style).glyph;
   return spaceGlyph ? fp4::toPixel(spaceGlyph->advanceX) : 0;  // snap 12.4 fixed-point to nearest pixel
 }
 
@@ -1471,7 +1417,7 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) return 0;
   const auto& font = fontIt->second;
-  const EpdGlyph* spaceGlyph = font.getGlyph(' ', style);
+  const EpdGlyph* spaceGlyph = font.resolveGlyph(' ', style).glyph;
   const int32_t spaceAdvanceFP = spaceGlyph ? static_cast<int32_t>(spaceGlyph->advanceX) : 0;
   // Combine space advance + flanking kern into one fixed-point sum before snapping.
   // Snapping the combined value avoids the +/-1 px error from snapping each component separately.
@@ -1528,7 +1474,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
       widthPx += fp4::toPixel(prevAdvanceFP + kernFP);         // snap 12.4 fixed-point to nearest pixel
     }
 
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
+    const EpdGlyph* glyph = font.resolveGlyph(cp, style).glyph;
     prevAdvanceFP = glyph ? glyph->advanceX : 0;
     if ((style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
       prevAdvanceFP = (prevAdvanceFP + 1) / 2;
@@ -1546,8 +1492,9 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
     return 0;
   }
 
-  const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
-  return CjkUiFallback::ascenderFloor(ascender, fontIt->second.hasCjkUiFallback());
+  // getMaxAscender returns the primary's ascender today (Task 4 stub); Task 6 upgrades it
+  // to max(primary, fallback) so CJK-bearing UI fonts reserve the taller box family-wide.
+  return fontIt->second.getMaxAscender(EpdFontFamily::REGULAR);
 }
 
 int GfxRenderer::getLineHeight(const int fontId) const {
@@ -1557,8 +1504,9 @@ int GfxRenderer::getLineHeight(const int fontId) const {
     return 0;
   }
 
-  const int advanceY = fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
-  return CjkUiFallback::lineHeightFloor(advanceY, fontIt->second.hasCjkUiFallback());
+  // getMaxAdvanceY returns the primary's advanceY today (Task 4 stub); Task 6 upgrades it
+  // to max(primary, fallback) so line spacing accommodates the taller CJK fallback.
+  return fontIt->second.getMaxAdvanceY(EpdFontFamily::REGULAR);
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {
@@ -1567,8 +1515,9 @@ int GfxRenderer::getTextHeight(const int fontId) const {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
-  const int ascender = fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
-  return CjkUiFallback::textHeightFloor(ascender, fontIt->second.hasCjkUiFallback());
+  // getMaxAscender returns the primary's ascender today (Task 4 stub); Task 6 upgrades it
+  // to max(primary, fallback) so the bounding box covers CJK glyphs in UI fonts.
+  return fontIt->second.getMaxAscender(EpdFontFamily::REGULAR);
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
@@ -1602,7 +1551,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     }
 
     if (utf8IsCombiningMark(cp)) {
-      const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
+      const EpdGlyph* combiningGlyph = font.resolveGlyph(cp, style).glyph;
       if (!combiningGlyph) continue;
       const int raiseBy = combiningMark::raiseAboveBase(combiningGlyph->top, combiningGlyph->height, lastBaseTop);
       const int combiningX = x - raiseBy;
@@ -1621,7 +1570,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       lastBaseY -= fp4::toPixel(prevAdvanceFP + kernFP);       // snap 12.4 fixed-point to nearest pixel
     }
 
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
+    const EpdGlyph* glyph = font.resolveGlyph(cp, style).glyph;
 
     lastBaseLeft = glyph ? glyph->left : 0;
     lastBaseWidth = glyph ? glyph->width : 0;
