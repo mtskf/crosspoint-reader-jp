@@ -246,7 +246,9 @@ void ChapterHtmlSlimParser::dispatchNonCjk(Utf8ClusterAssembler::NonCjkKind kind
       nextJoin = WordJoin::Glue;
       break;
     case Utf8ClusterAssembler::NonCjkKind::Feff:
-      break;  // discard BOM / ZWNBSP
+      // Discard the BOM / ZWNBSP codepoint. Its no-break (Glue) join is already applied by
+      // Utf8ClusterAssembler (FEFF is an intrinsic no-break), so do NOT touch nextJoin here.
+      break;
     default:
       assert(false);
       std::abort();

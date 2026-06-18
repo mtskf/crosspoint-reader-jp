@@ -461,4 +461,31 @@ TEST(ParserCluster, StyleSnapshotAtStageTimeNotFlushTime) {
   }
 }
 
+// 13. FEFF (ZWNBSP) is a no-break: 日<U+FEFF>本 must NOT break before 本, while plain
+//     日本 DOES. The ZWNBSP carries an intrinsic no-break intent, so the assembler must set
+//     nextJoin = Glue across it — the trailing base then stages with Glue, not CjkBreak.
+TEST(ParserCluster, FeffIsNoBreakBetweenCjk) {
+  // 日 = E6 97 A5, U+FEFF = EF BB BF, 本 = E6 9C AC
+  const std::vector<uint8_t> withFeff = {0xE6, 0x97, 0xA5, 0xEF, 0xBB, 0xBF, 0xE6, 0x9C, 0xAC};
+  State state;
+  WordJoin nextJoin = WordJoin::Space;
+  feed(withFeff, state, nextJoin);
+
+  // The trailing base 本 is still staged; drain it and inspect its join.
+  Flushable drained;
+  ASSERT_TRUE(Utf8ClusterAssembler::flushPendingBase(state, drained));
+  EXPECT_EQ(decodeOnly(drained.bytes, drained.len), 0x672Cu);  // 本
+  EXPECT_EQ(drained.join, WordJoin::Glue);                     // no break across the ZWNBSP
+
+  // Control: plain 日本 (no FEFF) keeps the ordinary CJK run join — breakable before 本.
+  const std::vector<uint8_t> plain = {0xE6, 0x97, 0xA5, 0xE6, 0x9C, 0xAC};
+  State st2;
+  WordJoin nj2 = WordJoin::Space;
+  feed(plain, st2, nj2);
+  Flushable d2;
+  ASSERT_TRUE(Utf8ClusterAssembler::flushPendingBase(st2, d2));
+  EXPECT_EQ(decodeOnly(d2.bytes, d2.len), 0x672Cu);  // 本
+  EXPECT_EQ(d2.join, WordJoin::CjkBreak);            // ordinary CJK run: may break here
+}
+
 }  // namespace
