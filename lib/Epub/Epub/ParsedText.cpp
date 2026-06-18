@@ -125,17 +125,18 @@ bool isWordCharacter(uint32_t cp) {
 // emits these as single tokens via pendingCjkBase, so the focus tokenizer
 // must treat the whole cluster as one unit.
 static bool isSingleCjkGraphemeCluster(const std::string& s) {
-  const unsigned char* p = reinterpret_cast<const unsigned char*>(s.c_str());
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
+  const unsigned char* end = p + s.size();
   uint32_t firstCp = utf8NextCodepoint(&p);
   // `firstCp == 0` covers empty string (defensive); reject so the bypass only
   // fires for genuine CJK clusters.
   if (firstCp == 0 || !utf8IsCjkBreakable(firstCp)) return false;
-  // Everything after the first codepoint must be a grapheme extender
-  // (no second base codepoint allowed).
-  while (*p) {
+  // Everything after the first codepoint must be a grapheme extender. Bound by
+  // `end` (not a NUL terminator) so an embedded NUL followed by a non-extender
+  // is correctly rejected rather than silently truncating validation.
+  while (p < end) {
     uint32_t cp = utf8NextCodepoint(&p);
-    if (cp == 0) return false;
-    if (!utf8IsGraphemeExtender(cp)) return false;
+    if (cp == 0 || !utf8IsGraphemeExtender(cp)) return false;
   }
   return true;
 }
@@ -146,22 +147,23 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const WordJoin join) {
   if (word.empty()) return;
 
+  EpdFontFamily::Style baseStyle = fontStyle;
+  if (underline) {
+    baseStyle = static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::UNDERLINE);
+  }
+
   // CJK grapheme-cluster tokens are pre-split by the parser into single
   // breakable units. The focus-reading tokenizer would either bold the whole
   // token or split base from extender — both wrong. Bypass focus split for any
   // single CJK grapheme cluster regardless of `join` (which is a BOUNDARY
   // descriptor, not a token-kind tag; the first CJK char of a run carries Space).
+  // Push baseStyle (not raw fontStyle) so an underlined CJK char keeps its underline.
   if (focusReadingEnabled && isSingleCjkGraphemeCluster(word)) {
     words.emplace_back(std::move(word));
-    wordStyles.push_back(fontStyle);
+    wordStyles.push_back(baseStyle);
     wordJoins.push_back(join);
     wordIsFocusSuffix.push_back(false);
     return;
-  }
-
-  EpdFontFamily::Style baseStyle = fontStyle;
-  if (underline) {
-    baseStyle = static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::UNDERLINE);
   }
   const bool wordStartsRtl = !hasRtlWord && mayContainRtlBytes(word.c_str()) &&
                              BidiUtils::startsWithRtl(word.c_str(), RTL_PER_WORD_PROBE_DEPTH);

@@ -323,3 +323,21 @@ TEST(ParsedTextLayout, FocusReadingDoesNotBoldCjkNfdClusters) {
 // Note: the empty-word focus test is deliberately omitted. ParsedText::addWord
 // short-circuits with `if (word.empty()) return;` BEFORE the focus-bypass helper,
 // so empty words never reach isSingleCjkGraphemeCluster — such a test would be vacuous.
+
+// Regression (Codex review): the focus-bypass must PRESERVE underline on a single
+// CJK cluster. It previously pushed the raw fontStyle, dropping the UNDERLINE bit.
+TEST(ParsedTextLayout, FocusReadingPreservesUnderlineOnCjkCluster) {
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
+                  /*focusReadingEnabled=*/true, leftAligned());
+  text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, /*underline=*/true, WordJoin::Space);  // 日, underlined
+  std::vector<EpdFontFamily::Style> styles;
+  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell,
+                             [&](std::shared_ptr<TextBlock> block) {
+                               for (const auto& s : block->getWordStyles()) styles.push_back(s);
+                             });
+  ASSERT_EQ(styles.size(), 1u);
+  EXPECT_NE(static_cast<int>(styles[0]) & static_cast<int>(EpdFontFamily::UNDERLINE), 0)
+      << "underline must survive the CJK focus-bypass";
+  EXPECT_EQ(static_cast<int>(styles[0]) & static_cast<int>(EpdFontFamily::BOLD), 0)
+      << "focus-bypass must still skip focus-bolding of a single CJK cluster";
+}
