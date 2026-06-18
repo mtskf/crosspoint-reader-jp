@@ -488,4 +488,23 @@ TEST(ParserCluster, FeffIsNoBreakBetweenCjk) {
   EXPECT_EQ(d2.join, WordJoin::CjkBreak);            // ordinary CJK run: may break here
 }
 
+// 14. FEFF's no-break only upgrades a breakable CJK adjacency (CjkBreak); it must NOT clobber a
+//     preceding space. In 日<space><FEFF>本 the parser's dispatchNonCjk(Whitespace) sets
+//     nextJoin = Space before the FEFF codepoint is consumed (the space exists only as that join,
+//     never as a token), so we enter FEFF with nextJoin = Space — feed <FEFF>本 from that state.
+//     Glueing across the FEFF here would silently swallow the space, so the trailing base must
+//     keep Space (and stay breakable), NOT become Glue.
+TEST(ParserCluster, FeffDoesNotSwallowPrecedingSpace) {
+  // U+FEFF = EF BB BF, 本 = E6 9C AC. nextJoin = Space models the just-processed space.
+  const std::vector<uint8_t> buf = {0xEF, 0xBB, 0xBF, 0xE6, 0x9C, 0xAC};
+  State state;
+  WordJoin nextJoin = WordJoin::Space;
+  feed(buf, state, nextJoin);
+
+  Flushable drained;
+  ASSERT_TRUE(Utf8ClusterAssembler::flushPendingBase(state, drained));
+  EXPECT_EQ(decodeOnly(drained.bytes, drained.len), 0x672Cu);  // 本
+  EXPECT_EQ(drained.join, WordJoin::Space);                    // space survives the ZWNBSP
+}
+
 }  // namespace

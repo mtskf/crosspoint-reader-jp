@@ -129,11 +129,13 @@ Utf8ClusterAssembler::ConsumeResult Utf8ClusterAssembler::tryConsumeCodepoint(
   // Non-CJK: Latin / whitespace / NBSP / FEFF. The caller sets nextJoin for Latin/whitespace/
   // NBSP (those couple the join to a parser-side flush/emit action). FEFF (ZWNBSP) is the lone
   // exception: it produces no token, so its only effect is an intrinsic no-break — glue across
-  // it here so the next CJK base stages with Glue instead of the run's default CjkBreak.
+  // it here so the next CJK base stages with Glue instead of the run's default CjkBreak. Only
+  // upgrade a breakable CJK adjacency (CjkBreak): a preceding Space is a real space carried as
+  // the join, and an existing Glue is already no-break, so leave both untouched.
   outNonCjkKind = classifyNonCjk(cp);
   outNonCjkCp = cp;
   outNonCjkLen = cpLen;
-  if (outNonCjkKind == NonCjkKind::Feff) nextJoin = WordJoin::Glue;
+  if (outNonCjkKind == NonCjkKind::Feff && nextJoin == WordJoin::CjkBreak) nextJoin = WordJoin::Glue;
   if (state.pendingCjkBaseLen > 0) {
     fillFlushableFromState(state, outFlushable);
     state.pendingCjkBaseLen = 0;  // clear staged base
