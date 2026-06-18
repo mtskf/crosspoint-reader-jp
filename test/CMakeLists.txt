@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(crosspoint_reader_tests CXX)
+project(crosspoint_reader_tests CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,3 +46,4 @@ add_subdirectory(cjk_ui_fallback)
 add_subdirectory(cjk_font_parity)
 add_subdirectory(font_resolver)
 add_subdirectory(font_boundary)
+add_subdirectory(parsed_text)
