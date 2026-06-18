@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "lib/Epub/Epub/ParsedText.h"
-#include "lib/Epub/Epub/blocks/TextBlock.h"
 #include "lib/Epub/Epub/blocks/BlockStyle.h"
+#include "lib/Epub/Epub/blocks/TextBlock.h"
 #include "support/FakeTextMetrics.h"
 
 namespace {
@@ -59,7 +59,8 @@ BlockStyle leftAligned() {
 // English wraps at word boundaries. Whitespace is dropped, so the joined text
 // of each line is space-less; we pin WHERE the breaks fall.
 TEST(ParsedTextLayout, EnglishWrapsAtWordBoundaries) {
-  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false, leftAligned());
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false,
+                  leftAligned());
   for (const char* w : {"the", "quick", "brown", "fox"}) text.addWord(w, EpdFontFamily::REGULAR);
   // viewport 9 cells: "the"(3)+space+"quick"(5) = 9 → fits (computeLineBreaks at
   // ParsedText.cpp:407 uses strict `>` against viewport, so content==viewport fits).
@@ -89,10 +90,11 @@ TEST(ParsedTextLayout, EnglishWrapsAtWordBoundaries) {
 // the layout would prefer "x 200" on line 0 (1+1+3 = 5 ≤ 6) and " km" on line 1,
 // which is a wrong shape for a no-break-space group.
 TEST(ParsedTextLayout, NoBreakSpaceGlueKeepsGroupAtomic) {
-  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("x", EpdFontFamily::REGULAR);  // join=Space (default)
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false,
+                  leftAligned());
+  text.addWord("x", EpdFontFamily::REGULAR);    // join=Space (default)
   text.addWord("200", EpdFontFamily::REGULAR);  // join=Space — breakable before
-  text.addWord(" ", EpdFontFamily::REGULAR, /*underline=*/false, /*attachToPrevious=*/true);  // NBSP — Glue
+  text.addWord(" ", EpdFontFamily::REGULAR, /*underline=*/false, /*attachToPrevious=*/true);   // NBSP — Glue
   text.addWord("km", EpdFontFamily::REGULAR, /*underline=*/false, /*attachToPrevious=*/true);  // Glue
   auto lines = linesOf(text, 6 * kCell);
   // Glue forbids breaking between "200", " ", and "km" — the trio must move as one
@@ -106,7 +108,8 @@ TEST(ParsedTextLayout, NoBreakSpaceGlueKeepsGroupAtomic) {
 TEST(ParsedTextLayout, LongWordHyphenatesAcrossLines) {
   // Note: hyphenation is the 2nd arg (hyphenationEnabled=true). allowFallback is not a ParsedText
   // constructor argument — it is a layout-time parameter. This test enables hyphenation.
-  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/true, /*focusReadingEnabled=*/false, leftAligned());
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/true, /*focusReadingEnabled=*/false,
+                  leftAligned());
   text.addWord("supercalifragilistic", EpdFontFamily::REGULAR);  // 20 chars
   auto lines = linesOf(text, 8 * kCell);
 
@@ -131,8 +134,7 @@ TEST(ParsedTextLayout, LongWordHyphenatesAcrossLines) {
   std::string joined;
   for (const auto& l : lines) joined += l;
   joined.erase(std::remove(joined.begin(), joined.end(), '-'), joined.end());
-  EXPECT_EQ(joined, "supercalifragilistic")
-      << "hyphenation must not drop or duplicate characters across lines";
+  EXPECT_EQ(joined, "supercalifragilistic") << "hyphenation must not drop or duplicate characters across lines";
 }
 
 // BiDi: an RTL run reorders visually. Pin reorder itself by asserting the visual
@@ -145,10 +147,11 @@ TEST(ParsedTextLayout, LongWordHyphenatesAcrossLines) {
 // (`abc`=3 cells, `אב`=2 cells, `xyz`=3 cells, total=8 ≤ 20 → 1 line) so that any
 // reorder regression also moves the xpos boundaries (auxiliary assert below).
 TEST(ParsedTextLayout, BidiRtlRunLaysOut) {
-  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("abc", EpdFontFamily::REGULAR);                // 3 cells, LTR
-  text.addWord("\xD7\x90\xD7\x91", EpdFontFamily::REGULAR);   // אב — 2 cells, RTL (Hebrew aleph-bet)
-  text.addWord("xyz", EpdFontFamily::REGULAR);                // 3 cells, LTR
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false,
+                  leftAligned());
+  text.addWord("abc", EpdFontFamily::REGULAR);               // 3 cells, LTR
+  text.addWord("\xD7\x90\xD7\x91", EpdFontFamily::REGULAR);  // אב — 2 cells, RTL (Hebrew aleph-bet)
+  text.addWord("xyz", EpdFontFamily::REGULAR);               // 3 cells, LTR
   auto blocks = layoutBlocksOf(text, 20 * kCell);
   ASSERT_EQ(blocks.size(), 1u);
   ASSERT_EQ(blocks[0]->getWords().size(), 3u);
