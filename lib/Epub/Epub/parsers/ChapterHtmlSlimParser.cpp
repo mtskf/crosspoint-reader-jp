@@ -246,8 +246,9 @@ void ChapterHtmlSlimParser::dispatchNonCjk(Utf8ClusterAssembler::NonCjkKind kind
       nextJoin = WordJoin::Glue;
       break;
     case Utf8ClusterAssembler::NonCjkKind::Feff:
-      // Discard the BOM / ZWNBSP codepoint. Its no-break (Glue) join is already applied by
-      // Utf8ClusterAssembler (FEFF is an intrinsic no-break), so do NOT touch nextJoin here.
+      // Discard the BOM / ZWNBSP codepoint. If nextJoin was CjkBreak the assembler has already
+      // upgraded it to Glue (intrinsic no-break); a real Space or existing Glue is left untouched.
+      // Either way, do NOT touch nextJoin here.
       break;
     default:
       assert(false);
