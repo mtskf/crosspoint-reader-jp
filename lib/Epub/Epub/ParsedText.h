@@ -55,7 +55,8 @@ class ParsedText {
         hasRtlWord(false) {}
   ~ParsedText() = default;
 
-  void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, WordJoin join = WordJoin::Space);
+  void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false,
+               WordJoin join = WordJoin::Space);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }

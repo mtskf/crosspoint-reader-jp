@@ -1,15 +1,14 @@
+#include <Utf8.h>
 #include <gtest/gtest.h>
 
-#include <Utf8.h>
-
 TEST(Utf8Predicates, CjkBreakableSupplementaryRanges) {
-  EXPECT_TRUE(utf8IsCjkBreakable(0x30000));   // CJK Extension G first codepoint
-  EXPECT_TRUE(utf8IsCjkBreakable(0x1B000));   // Kana Supplement representative
-  EXPECT_TRUE(utf8IsCjkBreakable(0x1B100));   // Kana Extended-A first codepoint
-  EXPECT_TRUE(utf8IsCjkBreakable(0x2B740));   // CJK Extension D first codepoint
-  EXPECT_TRUE(utf8IsCjkBreakable(0x2F800));   // CJK Compatibility Ideographs Supplement
-  EXPECT_TRUE(utf8IsCjkBreakable(0x31350));   // CJK Extension H first codepoint (Unicode 15.0)
-  EXPECT_FALSE(utf8IsCjkBreakable(0x0061));   // ASCII 'a' — must not match
+  EXPECT_TRUE(utf8IsCjkBreakable(0x30000));  // CJK Extension G first codepoint
+  EXPECT_TRUE(utf8IsCjkBreakable(0x1B000));  // Kana Supplement representative
+  EXPECT_TRUE(utf8IsCjkBreakable(0x1B100));  // Kana Extended-A first codepoint
+  EXPECT_TRUE(utf8IsCjkBreakable(0x2B740));  // CJK Extension D first codepoint
+  EXPECT_TRUE(utf8IsCjkBreakable(0x2F800));  // CJK Compatibility Ideographs Supplement
+  EXPECT_TRUE(utf8IsCjkBreakable(0x31350));  // CJK Extension H first codepoint (Unicode 15.0)
+  EXPECT_FALSE(utf8IsCjkBreakable(0x0061));  // ASCII 'a' — must not match
 }
 
 TEST(Utf8Predicates, GraphemeExtenderCoversAllOverlapRanges) {

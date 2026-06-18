@@ -59,10 +59,9 @@ inline bool utf8IsCombiningMark(const uint32_t cp) {
 // codepoint in layout (combining marks, kana voicing marks, ideographic tone
 // marks, variation selectors).
 inline bool utf8IsGraphemeExtender(uint32_t cp) {
-  return utf8IsCombiningMark(cp)
-         || (cp >= 0x3099 && cp <= 0x309A)    // Combining katakana-hiragana voicing
-         || (cp >= 0x302A && cp <= 0x302F)    // Ideographic tone marks
-         || (cp >= 0xFF9E && cp <= 0xFF9F)    // Halfwidth voicing marks
-         || (cp >= 0xFE00 && cp <= 0xFE0F)    // Variation Selectors VS-1..VS-16
-         || (cp >= 0xE0100 && cp <= 0xE01EF); // Variation Selectors Supplement
+  return utf8IsCombiningMark(cp) || (cp >= 0x3099 && cp <= 0x309A)  // Combining katakana-hiragana voicing
+         || (cp >= 0x302A && cp <= 0x302F)                          // Ideographic tone marks
+         || (cp >= 0xFF9E && cp <= 0xFF9F)                          // Halfwidth voicing marks
+         || (cp >= 0xFE00 && cp <= 0xFE0F)                          // Variation Selectors VS-1..VS-16
+         || (cp >= 0xE0100 && cp <= 0xE01EF);                       // Variation Selectors Supplement
 }

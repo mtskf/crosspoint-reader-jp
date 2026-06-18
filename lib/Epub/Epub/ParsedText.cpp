@@ -565,7 +565,8 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const ITextMetrics& 
     // Don't break before a continuation word (e.g., orphaned "?" after "question").
     // Backtrack to the start of the continuation group so the whole group moves to the next line.
     // Only Glue forbids a break here; CjkBreak permits it.
-    while (currentIndex > lineStart + 1 && currentIndex < wordWidths.size() && !canBreakBefore(joinsVec[currentIndex])) {
+    while (currentIndex > lineStart + 1 && currentIndex < wordWidths.size() &&
+           !canBreakBefore(joinsVec[currentIndex])) {
       --currentIndex;
     }
 
@@ -875,7 +876,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
         xpos -= wordWidths[lastBreakAt + wordIdx];
         lineXPos.push_back(static_cast<int16_t>(xpos));
 
-        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
+        const bool nextIsContinuation =
+            wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
         if (nextIsContinuation) {
           // Cross-boundary kerning for continuation words
           int advance = renderer.getKerning(fontId, lastCodepoint(lineWords[wordIdx]),
@@ -909,7 +911,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       for (size_t wordIdx = 0; wordIdx < lineWordCount; wordIdx++) {
         lineXPos.push_back(static_cast<int16_t>(xpos));
 
-        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
+        const bool nextIsContinuation =
+            wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
         if (nextIsContinuation) {
           int advance = wordWidths[lastBreakAt + wordIdx];
           advance += renderer.getKerning(fontId, lastCodepoint(lineWords[wordIdx]),

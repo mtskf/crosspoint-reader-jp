@@ -92,8 +92,8 @@ TEST(ParsedTextLayout, EnglishWrapsAtWordBoundaries) {
 TEST(ParsedTextLayout, NoBreakSpaceGlueKeepsGroupAtomic) {
   ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false, /*focusReadingEnabled=*/false,
                   leftAligned());
-  text.addWord("x", EpdFontFamily::REGULAR);    // join=Space (default)
-  text.addWord("200", EpdFontFamily::REGULAR);  // join=Space — breakable before
+  text.addWord("x", EpdFontFamily::REGULAR);                                        // join=Space (default)
+  text.addWord("200", EpdFontFamily::REGULAR);                                      // join=Space — breakable before
   text.addWord(" ", EpdFontFamily::REGULAR, /*underline=*/false, WordJoin::Glue);   // NBSP — Glue
   text.addWord("km", EpdFontFamily::REGULAR, /*underline=*/false, WordJoin::Glue);  // Glue
   auto lines = linesOf(text, 6 * kCell);
@@ -187,8 +187,7 @@ static size_t countCodepoints(const std::string& s) {
 // Add a CJK run: each char its own breakable, no-space word (mirrors the parser).
 static void addCjkRun(ParsedText& text, int count, const char* ch) {
   for (int i = 0; i < count; ++i) {
-    text.addWord(ch, EpdFontFamily::REGULAR, /*underline=*/false,
-                 i == 0 ? WordJoin::Space : WordJoin::CjkBreak);
+    text.addWord(ch, EpdFontFamily::REGULAR, /*underline=*/false, i == 0 ? WordJoin::Space : WordJoin::CjkBreak);
   }
 }
 
@@ -207,14 +206,15 @@ TEST(ParsedTextLayout, JapaneseWrapsAtViewportNotAtChunk) {
 TEST(ParsedTextLayout, ParserSequenceEnglishSpaceCjkPreservesSpace) {
   ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
                   /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("English", EpdFontFamily::REGULAR);  // join=Space (default)
+  text.addWord("English", EpdFontFamily::REGULAR);                                  // join=Space (default)
   text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, false, WordJoin::Space);     // 日 — first CJK after space
   text.addWord("\xE6\x9C\xAC", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak);  // 本
   text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak);  // 語
   std::shared_ptr<TextBlock> firstLine;
   FakeTextMetrics metrics(kCell);
-  text.layoutAndExtractLines(metrics, kFontId, static_cast<uint16_t>(100 * kCell),
-                             [&](std::shared_ptr<TextBlock> b) { if (!firstLine) firstLine = b; });
+  text.layoutAndExtractLines(metrics, kFontId, static_cast<uint16_t>(100 * kCell), [&](std::shared_ptr<TextBlock> b) {
+    if (!firstLine) firstLine = b;
+  });
   ASSERT_TRUE(firstLine);
   const auto& xpos = firstLine->getWordXpos();
   ASSERT_GE(xpos.size(), 2u);
@@ -236,15 +236,15 @@ TEST(ParsedTextLayout, ParserSequenceCjkLatinNoSpace) {
   text.addWord("English", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak);       // Latin after CJK
   std::shared_ptr<TextBlock> firstLine;
   FakeTextMetrics metrics(kCell);
-  text.layoutAndExtractLines(metrics, kFontId, static_cast<uint16_t>(100 * kCell),
-                             [&](std::shared_ptr<TextBlock> b) { if (!firstLine) firstLine = b; });
+  text.layoutAndExtractLines(metrics, kFontId, static_cast<uint16_t>(100 * kCell), [&](std::shared_ptr<TextBlock> b) {
+    if (!firstLine) firstLine = b;
+  });
   ASSERT_TRUE(firstLine);
   const auto& xpos = firstLine->getWordXpos();
   ASSERT_GE(xpos.size(), 4u);
   // Each CJK char is kCell wide. "English" must sit flush against 語's tail (CjkBreak
   // adds no space): xpos[3] - xpos[2] should equal kCell (just 語's width), not 2*kCell.
-  EXPECT_EQ(xpos[3] - xpos[2], kCell)
-      << "Latin word after CJK run must inherit CjkBreak (no space gap)";
+  EXPECT_EQ(xpos[3] - xpos[2], kCell) << "Latin word after CJK run must inherit CjkBreak (no space gap)";
 }
 
 // Layout-layer characterization for a CJK-Latin-CJK sequence (does NOT exercise the
@@ -267,10 +267,10 @@ TEST(ParsedTextLayout, JapaneseRunWithSingleLatinCharNotDropped) {
 TEST(ParsedTextLayout, ParserSequenceNbspGluesCjk) {
   ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
                   /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("x", EpdFontFamily::REGULAR);                                         // join=Space
-  text.addWord("200", EpdFontFamily::REGULAR);                                       // join=Space
-  text.addWord(" ", EpdFontFamily::REGULAR, false, WordJoin::Glue);                  // NBSP word
-  text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::Glue);       // 語 inherits Glue
+  text.addWord("x", EpdFontFamily::REGULAR);                                    // join=Space
+  text.addWord("200", EpdFontFamily::REGULAR);                                  // join=Space
+  text.addWord(" ", EpdFontFamily::REGULAR, false, WordJoin::Glue);             // NBSP word
+  text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::Glue);  // 語 inherits Glue
   auto lines = linesOf(text, 6 * kCell);
   ASSERT_EQ(lines.size(), 2u);
   EXPECT_EQ(lines[0], "x");
@@ -285,10 +285,9 @@ TEST(ParsedTextLayout, FocusReadingDoesNotBoldCjkTokens) {
                   /*focusReadingEnabled=*/true, leftAligned());
   addCjkRun(text, 25, "\xE8\x87\xAA");  // 25 × 自 with CjkBreak joins (first is Space)
   std::vector<EpdFontFamily::Style> styles;
-  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell,
-                             [&](std::shared_ptr<TextBlock> block) {
-                               for (const auto& s : block->getWordStyles()) styles.push_back(s);
-                             });
+  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell, [&](std::shared_ptr<TextBlock> block) {
+    for (const auto& s : block->getWordStyles()) styles.push_back(s);
+  });
   ASSERT_EQ(styles.size(), 25u);  // sanity: every CJK char emitted exactly one style entry
   for (size_t i = 0; i < styles.size(); ++i) {
     EXPECT_EQ(static_cast<int>(styles[i]) & static_cast<int>(EpdFontFamily::BOLD), 0)
@@ -305,14 +304,12 @@ TEST(ParsedTextLayout, FocusReadingDoesNotBoldCjkNfdClusters) {
   // Build 25 NFD clusters: か + U+3099 = "\xE3\x81\x8B\xE3\x82\x99" (6 bytes, 2 codepoints).
   const std::string kCluster = "\xE3\x81\x8B\xE3\x82\x99";
   for (int i = 0; i < 25; ++i) {
-    text.addWord(kCluster, EpdFontFamily::REGULAR, /*underline=*/false,
-                 i == 0 ? WordJoin::Space : WordJoin::CjkBreak);
+    text.addWord(kCluster, EpdFontFamily::REGULAR, /*underline=*/false, i == 0 ? WordJoin::Space : WordJoin::CjkBreak);
   }
   std::vector<EpdFontFamily::Style> styles;
-  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell,
-                             [&](std::shared_ptr<TextBlock> block) {
-                               for (const auto& s : block->getWordStyles()) styles.push_back(s);
-                             });
+  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell, [&](std::shared_ptr<TextBlock> block) {
+    for (const auto& s : block->getWordStyles()) styles.push_back(s);
+  });
   ASSERT_EQ(styles.size(), 25u);
   for (size_t i = 0; i < styles.size(); ++i) {
     EXPECT_EQ(static_cast<int>(styles[i]) & static_cast<int>(EpdFontFamily::BOLD), 0)
@@ -331,10 +328,9 @@ TEST(ParsedTextLayout, FocusReadingPreservesUnderlineOnCjkCluster) {
                   /*focusReadingEnabled=*/true, leftAligned());
   text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, /*underline=*/true, WordJoin::Space);  // 日, underlined
   std::vector<EpdFontFamily::Style> styles;
-  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell,
-                             [&](std::shared_ptr<TextBlock> block) {
-                               for (const auto& s : block->getWordStyles()) styles.push_back(s);
-                             });
+  text.layoutAndExtractLines(FakeTextMetrics(kCell), kFontId, 100 * kCell, [&](std::shared_ptr<TextBlock> block) {
+    for (const auto& s : block->getWordStyles()) styles.push_back(s);
+  });
   ASSERT_EQ(styles.size(), 1u);
   EXPECT_NE(static_cast<int>(styles[0]) & static_cast<int>(EpdFontFamily::UNDERLINE), 0)
       << "underline must survive the CJK focus-bypass";
