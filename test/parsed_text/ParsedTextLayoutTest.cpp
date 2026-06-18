@@ -342,23 +342,23 @@ TEST(ParsedTextLayout, FocusReadingPreservesUnderlineOnCjkCluster) {
 TEST(ParsedTextLayout, ParserSequenceCjkAcrossInlineStyleStaysBreakable) {
   ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
                   /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("ab", EpdFontFamily::REGULAR);                                      // join=Space
-  text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak); // 日
-  text.addWord("\xE6\x9C\xAC", EpdFontFamily::ITALIC, false, WordJoin::CjkBreak);  // 本 (italic via <em>)
-  text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak); // 語
+  text.addWord("ab", EpdFontFamily::REGULAR);                                       // join=Space
+  text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak);  // 日
+  text.addWord("\xE6\x9C\xAC", EpdFontFamily::ITALIC, false, WordJoin::CjkBreak);   // 本 (italic via <em>)
+  text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak);  // 語
   auto lines = linesOf(text, 3 * kCell);
   ASSERT_EQ(lines.size(), 2u);
-  EXPECT_EQ(lines[0], "ab\xE6\x97\xA5");              // ab日
-  EXPECT_EQ(lines[1], "\xE6\x9C\xAC\xE8\xAA\x9E");    // 本語
+  EXPECT_EQ(lines[0], "ab\xE6\x97\xA5");            // ab日
+  EXPECT_EQ(lines[1], "\xE6\x9C\xAC\xE8\xAA\x9E");  // 本語
 }
 
 // Latin inline-close MUST keep Glue (preserves quickly).
 TEST(ParsedTextLayout, ParserSequenceLatinAcrossInlineStyleStaysGlued) {
   ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
                   /*focusReadingEnabled=*/false, leftAligned());
-  text.addWord("a", EpdFontFamily::REGULAR);                          // join=Space
-  text.addWord("quick", EpdFontFamily::REGULAR);                      // join=Space
-  text.addWord("ly", EpdFontFamily::ITALIC, false, WordJoin::Glue);   // Glue — inline close
+  text.addWord("a", EpdFontFamily::REGULAR);                         // join=Space
+  text.addWord("quick", EpdFontFamily::REGULAR);                     // join=Space
+  text.addWord("ly", EpdFontFamily::ITALIC, false, WordJoin::Glue);  // Glue — inline close
   auto lines = linesOf(text, 7 * kCell);
   ASSERT_EQ(lines.size(), 2u);
   EXPECT_EQ(lines[0], "a");

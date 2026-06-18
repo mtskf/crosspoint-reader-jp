@@ -9,13 +9,12 @@
 
 #include <Utf8.h>
 #include <Utf8ClusterAssembler.h>
+#include <gtest/gtest.h>
 
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 namespace {
 
@@ -40,8 +39,7 @@ struct Step {
 // style-snapshot tests). Stops looping when i no longer advances on a NeedMore so the
 // caller can inspect the carry-over.
 std::vector<Step> feed(const std::vector<uint8_t>& bytes, State& state, WordJoin& nextJoin,
-                       EpdFontFamily::Style callerFontStyle = EpdFontFamily::REGULAR,
-                       bool callerUnderline = false) {
+                       EpdFontFamily::Style callerFontStyle = EpdFontFamily::REGULAR, bool callerUnderline = false) {
   std::vector<Step> steps;
   const char* s = reinterpret_cast<const char*>(bytes.data());
   const int len = static_cast<int>(bytes.size());
@@ -53,9 +51,9 @@ std::vector<Step> feed(const std::vector<uint8_t>& bytes, State& state, WordJoin
     step.nonCjkKind = NonCjkKind::Latin;
     step.nonCjkCp = 0;
     step.nonCjkLen = 0;
-    step.result = Utf8ClusterAssembler::tryConsumeCodepoint(s, len, i, state, nextJoin, callerFontStyle,
-                                                            callerUnderline, step.flushable, step.nonCjkKind,
-                                                            step.nonCjkCp, step.nonCjkLen);
+    step.result =
+        Utf8ClusterAssembler::tryConsumeCodepoint(s, len, i, state, nextJoin, callerFontStyle, callerUnderline,
+                                                  step.flushable, step.nonCjkKind, step.nonCjkCp, step.nonCjkLen);
     step.iAfter = i;
     steps.push_back(step);
     if (step.result == ConsumeResult::NeedMore) break;  // carry-over staged; no more progress this buffer
@@ -101,8 +99,8 @@ TEST(ParserCluster, CarryOverAcrossCalls) {
   NonCjkKind k1 = NonCjkKind::Latin;
   uint32_t cp1 = 0;
   uint8_t l1 = 0;
-  auto r1 = Utf8ClusterAssembler::tryConsumeCodepoint(s1, 2, i1, state, nextJoin, EpdFontFamily::REGULAR, false, f1,
-                                                      k1, cp1, l1);
+  auto r1 = Utf8ClusterAssembler::tryConsumeCodepoint(s1, 2, i1, state, nextJoin, EpdFontFamily::REGULAR, false, f1, k1,
+                                                      cp1, l1);
   EXPECT_EQ(r1, ConsumeResult::NeedMore);
   EXPECT_EQ(i1, 0);  // i unchanged
   EXPECT_EQ(state.pendingUtf8Len, 2);
@@ -115,8 +113,8 @@ TEST(ParserCluster, CarryOverAcrossCalls) {
   NonCjkKind k2 = NonCjkKind::Latin;
   uint32_t cp2 = 0;
   uint8_t l2 = 0;
-  auto r2 = Utf8ClusterAssembler::tryConsumeCodepoint(s2, 1, i2, state, nextJoin, EpdFontFamily::REGULAR, false, f2,
-                                                      k2, cp2, l2);
+  auto r2 = Utf8ClusterAssembler::tryConsumeCodepoint(s2, 1, i2, state, nextJoin, EpdFontFamily::REGULAR, false, f2, k2,
+                                                      cp2, l2);
   EXPECT_EQ(r2, ConsumeResult::StagedOnly);
   EXPECT_EQ(i2, 1);
 
@@ -231,7 +229,7 @@ TEST(ParserCluster, IdeographicToneMarkGluesNotBreaks) {
 TEST(ParserCluster, OverflowGuardResetsJoin) {
   // Base 漢 (3 bytes) then VS-1 extenders (3 bytes each: EF B8 80).
   // 3 + 3 + 3 + 3 + 3 = 15 fits; the 5th extender (would make 18) overflows.
-  std::vector<uint8_t> buf = {0xE6, 0xBC, 0xA2};                         // 漢, 3 bytes
+  std::vector<uint8_t> buf = {0xE6, 0xBC, 0xA2};                          // 漢, 3 bytes
   for (int n = 0; n < 5; ++n) buf.insert(buf.end(), {0xEF, 0xB8, 0x80});  // 5 × U+FE00
 
   State state;
@@ -286,12 +284,12 @@ TEST(ParserCluster, EmittedAndNonCjkCallerAppendContract) {
   auto rb = Utf8ClusterAssembler::tryConsumeCodepoint(s, len, i, state, nextJoin, EpdFontFamily::REGULAR,
                                                       /*callerUnderline=*/false, fb, kb, cpb, lb);
   EXPECT_EQ(rb, ConsumeResult::EmittedAndNonCjk);  // (a)
-  EXPECT_EQ(fb.len, 3);                             // (b)
+  EXPECT_EQ(fb.len, 3);                            // (b)
   EXPECT_EQ(decodeOnly(fb.bytes, fb.len), 0x65E5u);
-  EXPECT_EQ(kb, NonCjkKind::Latin);  // (c)
-  EXPECT_EQ(cpb, 0x0061u);           // (d)
-  EXPECT_EQ(lb, 1);                  // (e)
-  EXPECT_EQ(i, 4);                   // (f) advanced past 'a'
+  EXPECT_EQ(kb, NonCjkKind::Latin);       // (c)
+  EXPECT_EQ(cpb, 0x0061u);                // (d)
+  EXPECT_EQ(lb, 1);                       // (e)
+  EXPECT_EQ(i, 4);                        // (f) advanced past 'a'
   EXPECT_EQ(state.pendingCjkBaseLen, 0);  // (g) state cleared
   // (h)(i) stage-time snapshot survives, NOT call-B's false/REGULAR.
   EXPECT_TRUE(fb.underline);
@@ -314,8 +312,8 @@ TEST(ParserCluster, EmittedAndNonCjkCallerAppendContract) {
     NonCjkKind kx = NonCjkKind::Latin;
     uint32_t cpx = 0;
     uint8_t lx = 0;
-    auto rx = Utf8ClusterAssembler::tryConsumeCodepoint(ss, 1, j, st2, nj2, EpdFontFamily::REGULAR, false, fx, kx,
-                                                        cpx, lx);
+    auto rx =
+        Utf8ClusterAssembler::tryConsumeCodepoint(ss, 1, j, st2, nj2, EpdFontFamily::REGULAR, false, fx, kx, cpx, lx);
     EXPECT_EQ(rx, ConsumeResult::NonCjkOnly);
     EXPECT_EQ(kx, NonCjkKind::Whitespace);  // do NOT read fx (outFlushable INVALID)
     EXPECT_EQ(j, 1);
@@ -336,8 +334,8 @@ TEST(ParserCluster, EmittedAndNonCjkCallerAppendContract) {
       NonCjkKind kk = NonCjkKind::Latin;
       uint32_t cc = 0;
       uint8_t ll = 0;
-      auto r = Utf8ClusterAssembler::tryConsumeCodepoint(ss, ln, j, st, nj, EpdFontFamily::REGULAR, false, fl, kk,
-                                                         cc, ll);
+      auto r =
+          Utf8ClusterAssembler::tryConsumeCodepoint(ss, ln, j, st, nj, EpdFontFamily::REGULAR, false, fl, kk, cc, ll);
       if (r == ConsumeResult::EmittedAndNonCjk || r == ConsumeResult::NonCjkOnly) {
         seen = kk;
         break;
@@ -345,9 +343,9 @@ TEST(ParserCluster, EmittedAndNonCjkCallerAppendContract) {
     }
     return seen;
   };
-  EXPECT_EQ(classifyAfterBase({0x20}), NonCjkKind::Whitespace);              // ' '
-  EXPECT_EQ(classifyAfterBase({0xC2, 0xA0}), NonCjkKind::Nbsp);             // NBSP U+00A0
-  EXPECT_EQ(classifyAfterBase({0xEF, 0xBB, 0xBF}), NonCjkKind::Feff);       // FEFF
+  EXPECT_EQ(classifyAfterBase({0x20}), NonCjkKind::Whitespace);        // ' '
+  EXPECT_EQ(classifyAfterBase({0xC2, 0xA0}), NonCjkKind::Nbsp);        // NBSP U+00A0
+  EXPECT_EQ(classifyAfterBase({0xEF, 0xBB, 0xBF}), NonCjkKind::Feff);  // FEFF
 }
 
 // 11. Split-Latin codepoint across callbacks: é (U+00E9 = C3 A9) split {C3} then {A9}.
@@ -363,8 +361,8 @@ TEST(ParserCluster, SplitLatinCodepointAcrossCallbacks) {
   NonCjkKind k1 = NonCjkKind::Latin;
   uint32_t cp1 = 0;
   uint8_t l1 = 0;
-  auto r1 = Utf8ClusterAssembler::tryConsumeCodepoint(s1, 1, i1, state, nextJoin, EpdFontFamily::REGULAR, false, f1,
-                                                      k1, cp1, l1);
+  auto r1 = Utf8ClusterAssembler::tryConsumeCodepoint(s1, 1, i1, state, nextJoin, EpdFontFamily::REGULAR, false, f1, k1,
+                                                      cp1, l1);
   EXPECT_EQ(r1, ConsumeResult::NeedMore);
   EXPECT_EQ(i1, 0);
   EXPECT_EQ(state.pendingUtf8Len, 1);
@@ -377,8 +375,8 @@ TEST(ParserCluster, SplitLatinCodepointAcrossCallbacks) {
   NonCjkKind k2 = NonCjkKind::Latin;
   uint32_t cp2 = 0;
   uint8_t l2 = 0;
-  auto r2 = Utf8ClusterAssembler::tryConsumeCodepoint(s2, 1, i2, state, nextJoin, EpdFontFamily::REGULAR, false, f2,
-                                                      k2, cp2, l2);
+  auto r2 = Utf8ClusterAssembler::tryConsumeCodepoint(s2, 1, i2, state, nextJoin, EpdFontFamily::REGULAR, false, f2, k2,
+                                                      cp2, l2);
   EXPECT_EQ(r2, ConsumeResult::NonCjkOnly);
   EXPECT_EQ(k2, NonCjkKind::Latin);
   EXPECT_EQ(cp2, 0x00E9u);
@@ -426,7 +424,7 @@ TEST(ParserCluster, StyleSnapshotAtStageTimeNotFlushTime) {
   EXPECT_EQ(rb, ConsumeResult::EmittedFlushable);
   EXPECT_EQ(fb.len, 3);
   EXPECT_EQ(decodeOnly(fb.bytes, fb.len), 0x65E5u);  // 日
-  EXPECT_TRUE(fb.underline);                          // stage-time true, NOT call-B false
+  EXPECT_TRUE(fb.underline);                         // stage-time true, NOT call-B false
   EXPECT_EQ(fb.fontStyle, EpdFontFamily::REGULAR);
   EXPECT_EQ(state.pendingCjkBaseLen, 3);  // 本 now staged
   EXPECT_FALSE(state.underlineAtStage);   // 本 staged under underline=false
@@ -458,8 +456,8 @@ TEST(ParserCluster, StyleSnapshotAtStageTimeNotFlushTime) {
     auto gr2 = Utf8ClusterAssembler::tryConsumeCodepoint(s, len, j, st, nj, EpdFontFamily::REGULAR,
                                                          /*callerUnderline=*/true, g2, gk2, gc2, gl2);
     EXPECT_EQ(gr2, ConsumeResult::EmittedFlushable);
-    EXPECT_FALSE(g2.underline);            // 日's stage-time underline=false
-    EXPECT_TRUE(st.underlineAtStage);      // 本 now staged under underline=true
+    EXPECT_FALSE(g2.underline);        // 日's stage-time underline=false
+    EXPECT_TRUE(st.underlineAtStage);  // 本 now staged under underline=true
   }
 }
 

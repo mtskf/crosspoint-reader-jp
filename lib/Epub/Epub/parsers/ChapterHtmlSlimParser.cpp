@@ -259,12 +259,10 @@ void ChapterHtmlSlimParser::splitLongBlockIfNeeded() {
   if (!currentTextBlock || currentTextBlock->size() <= 750) return;
   LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
   const int horizontalInset = currentTextBlock->getBlockStyle().totalHorizontalInset();
-  const uint16_t effectiveWidth = (horizontalInset < viewportWidth)
-                                      ? static_cast<uint16_t>(viewportWidth - horizontalInset)
-                                      : viewportWidth;
+  const uint16_t effectiveWidth =
+      (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
   currentTextBlock->layoutAndExtractLines(
-      renderer, fontId, effectiveWidth,
-      [this](const std::shared_ptr<TextBlock>& tb) { addLineToPage(tb); }, false);
+      renderer, fontId, effectiveWidth, [this](const std::shared_ptr<TextBlock>& tb) { addLineToPage(tb); }, false);
 }
 
 // start a new text block if needed
@@ -1084,10 +1082,10 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
         // Latin (CjkBreak — they abut with no space, breakable). (Invariant: partWordBuffer and a
         // staged base are never both non-empty except transiently here, so this drains cleanly.)
         if (self->partWordBufferIndex > 0) {
-          self->nextJoin = joinBefore;                                  // restore the Latin run's own join
-          self->flushPartWordBuffer();                                  // emit the Latin token IN ORDER
-          self->clusterState.pendingCjkBaseJoin = WordJoin::CjkBreak;   // staged base breaks from the Latin
-          self->nextJoin = WordJoin::CjkBreak;                          // CJK run continues: successor breaks too
+          self->nextJoin = joinBefore;                                 // restore the Latin run's own join
+          self->flushPartWordBuffer();                                 // emit the Latin token IN ORDER
+          self->clusterState.pendingCjkBaseJoin = WordJoin::CjkBreak;  // staged base breaks from the Latin
+          self->nextJoin = WordJoin::CjkBreak;                         // CJK run continues: successor breaks too
         }
         break;
       case Utf8ClusterAssembler::ConsumeResult::EmittedFlushable:
@@ -1153,8 +1151,8 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 
   // Flush buffer with current style BEFORE any style changes.
   // Flush if style will change OR if we're closing a block/structural element.
-  const bool isInlineTag = !headerOrBlockTag && !tableStructuralTag &&
-                           !matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) && self->depth != 1;
+  const bool isInlineTag =
+      !headerOrBlockTag && !tableStructuralTag && !matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) && self->depth != 1;
   const bool shouldFlush = styleWillChange || headerOrBlockTag || matches(name, BOLD_TAGS, std::size(BOLD_TAGS)) ||
                            matches(name, ITALIC_TAGS, std::size(ITALIC_TAGS)) ||
                            matches(name, UNDERLINE_TAGS, std::size(UNDERLINE_TAGS)) || tableStructuralTag ||

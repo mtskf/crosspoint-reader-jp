@@ -49,7 +49,7 @@ Utf8ClusterAssembler::ConsumeResult Utf8ClusterAssembler::tryConsumeCodepoint(
   // utf8NextCodepoint stops on a NUL, so we MUST decode from this private scratch and never
   // off s[] (which is not NUL-terminated).
   char scratch[5];
-  uint8_t scratchLen = 0;       // bytes placed into scratch (full cp length)
+  uint8_t scratchLen = 0;         // bytes placed into scratch (full cp length)
   uint8_t continuationBytes = 0;  // bytes pulled from THIS call's s[] (drives i advance)
 
   if (state.pendingUtf8Len > 0) {
