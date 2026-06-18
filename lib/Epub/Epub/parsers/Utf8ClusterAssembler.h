@@ -10,9 +10,9 @@
 class Utf8ClusterAssembler {
  public:
   // Classifies the non-CJK codepoint that the caller must dispatch on after an
-  // EmittedAndNonCjk / NonCjkOnly return. The four kinds map 1:1 to the four legacy
-  // branches in characterData (Latin buffer append / whitespace flush / NBSP synthesized
-  // token / FEFF discard).
+  // EmittedAndNonCjk / NonCjkOnly return. The four kinds map 1:1 to the four branches
+  // in ChapterHtmlSlimParser::dispatchNonCjk (Latin buffer append / whitespace flush /
+  // NBSP synthesized token / FEFF discard).
   enum class NonCjkKind : uint8_t {
     Latin,        // ordinary printable codepoint — caller appends raw UTF-8 bytes to Latin buffer
     Whitespace,   // U+0020 / U+0009 / U+000A / U+000D — flush Latin, set nextJoin = Space

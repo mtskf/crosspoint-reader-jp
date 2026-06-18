@@ -1068,6 +1068,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     Utf8ClusterAssembler::NonCjkKind kind;
     uint32_t cp = 0;
     uint8_t cpLen = 0;
+    const WordJoin joinBefore = self->nextJoin;
     const Utf8ClusterAssembler::ConsumeResult r = Utf8ClusterAssembler::tryConsumeCodepoint(
         s, len, i, self->clusterState, self->nextJoin, self->currentFontStyle(), self->effectiveUnderline, f, kind, cp,
         cpLen);
@@ -1076,7 +1077,19 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       case Utf8ClusterAssembler::ConsumeResult::NeedMore:
         return;  // codepoint split across callbacks — resume next callback
       case Utf8ClusterAssembler::ConsumeResult::StagedOnly:
-        break;  // keep looping
+        // A CJK base was just staged. If Latin text was pending in partWordBuffer (a Latin→CJK
+        // boundary with no separating whitespace, e.g. "PDF版" / "5月"), it must be emitted BEFORE
+        // the staged base so word order is preserved. The base wrongly inherited the Latin run's
+        // join when it was staged; the Latin owns that join, and the base should break from the
+        // Latin (CjkBreak — they abut with no space, breakable). (Invariant: partWordBuffer and a
+        // staged base are never both non-empty except transiently here, so this drains cleanly.)
+        if (self->partWordBufferIndex > 0) {
+          self->nextJoin = joinBefore;                                  // restore the Latin run's own join
+          self->flushPartWordBuffer();                                  // emit the Latin token IN ORDER
+          self->clusterState.pendingCjkBaseJoin = WordJoin::CjkBreak;   // staged base breaks from the Latin
+          self->nextJoin = WordJoin::CjkBreak;                          // CJK run continues: successor breaks too
+        }
+        break;
       case Utf8ClusterAssembler::ConsumeResult::EmittedFlushable:
         self->emitCjkToken(f);
         self->splitLongBlockIfNeeded();
