@@ -10,7 +10,7 @@
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
 
-class GfxRenderer;
+class ITextMetrics;
 
 class ParsedText {
   std::vector<std::string> words;
@@ -30,18 +30,18 @@ class ParsedText {
   std::vector<bool> reorderedFocusSuffixScratch;
   std::vector<uint16_t> visualOrderScratch;
 
-  int resolveFirstLineIndent(bool isFirstLine, const GfxRenderer& renderer, int fontId) const;
-  std::vector<size_t> computeLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
+  int resolveFirstLineIndent(bool isFirstLine, const ITextMetrics& renderer, int fontId) const;
+  std::vector<size_t> computeLineBreaks(const ITextMetrics& renderer, int fontId, int pageWidth,
                                         std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec);
-  std::vector<size_t> computeHyphenatedLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
+  std::vector<size_t> computeHyphenatedLineBreaks(const ITextMetrics& renderer, int fontId, int pageWidth,
                                                   std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec);
-  bool hyphenateWordAtIndex(size_t wordIndex, int availableWidth, const GfxRenderer& renderer, int fontId,
+  bool hyphenateWordAtIndex(size_t wordIndex, int availableWidth, const ITextMetrics& renderer, int fontId,
                             std::vector<uint16_t>& wordWidths, bool allowFallbackBreaks);
   void extractLine(size_t breakIndex, int pageWidth, const std::vector<uint16_t>& wordWidths,
                    const std::vector<bool>& continuesVec, const std::vector<size_t>& lineBreakIndices,
-                   const std::function<void(std::shared_ptr<TextBlock>)>& processLine, const GfxRenderer& renderer,
+                   const std::function<void(std::shared_ptr<TextBlock>)>& processLine, const ITextMetrics& renderer,
                    int fontId);
-  std::vector<uint16_t> calculateWordWidths(const GfxRenderer& renderer, int fontId);
+  std::vector<uint16_t> calculateWordWidths(const ITextMetrics& renderer, int fontId);
 
  public:
   explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
@@ -59,7 +59,7 @@ class ParsedText {
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
   bool isEmpty() const { return words.empty(); }
-  void layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
+  void layoutAndExtractLines(const ITextMetrics& renderer, int fontId, uint16_t viewportWidth,
                              const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
                              bool includeLastLine = true);
 };
