@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "WordJoin.h"
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
 
@@ -15,7 +16,7 @@ class ITextMetrics;
 class ParsedText {
   std::vector<std::string> words;
   std::vector<EpdFontFamily::Style> wordStyles;
-  std::vector<bool> wordContinues;      // true = word attaches to previous (no space before it)
+  std::vector<WordJoin> wordJoins;      // how each word joins the previous (space / glue / cjk-break)
   std::vector<bool> wordIsFocusSuffix;  // true = token is the regular tail of a focus bold-prefix split
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
@@ -26,19 +27,19 @@ class ParsedText {
   std::vector<std::string> reorderedWordsScratch;
   std::vector<EpdFontFamily::Style> reorderedStylesScratch;
   std::vector<uint16_t> reorderedWidthsScratch;
-  std::vector<bool> reorderedContinuesScratch;
+  std::vector<WordJoin> reorderedJoinsScratch;
   std::vector<bool> reorderedFocusSuffixScratch;
   std::vector<uint16_t> visualOrderScratch;
 
   int resolveFirstLineIndent(bool isFirstLine, const ITextMetrics& renderer, int fontId) const;
   std::vector<size_t> computeLineBreaks(const ITextMetrics& renderer, int fontId, int pageWidth,
-                                        std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec);
+                                        std::vector<uint16_t>& wordWidths, std::vector<WordJoin>& joinsVec);
   std::vector<size_t> computeHyphenatedLineBreaks(const ITextMetrics& renderer, int fontId, int pageWidth,
-                                                  std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec);
+                                                  std::vector<uint16_t>& wordWidths, std::vector<WordJoin>& joinsVec);
   bool hyphenateWordAtIndex(size_t wordIndex, int availableWidth, const ITextMetrics& renderer, int fontId,
                             std::vector<uint16_t>& wordWidths, bool allowFallbackBreaks);
   void extractLine(size_t breakIndex, int pageWidth, const std::vector<uint16_t>& wordWidths,
-                   const std::vector<bool>& continuesVec, const std::vector<size_t>& lineBreakIndices,
+                   const std::vector<WordJoin>& joinsVec, const std::vector<size_t>& lineBreakIndices,
                    const std::function<void(std::shared_ptr<TextBlock>)>& processLine, const ITextMetrics& renderer,
                    int fontId);
   std::vector<uint16_t> calculateWordWidths(const ITextMetrics& renderer, int fontId);
@@ -54,7 +55,8 @@ class ParsedText {
         hasRtlWord(false) {}
   ~ParsedText() = default;
 
-  void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);
+  void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false,
+               WordJoin join = WordJoin::Space);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
