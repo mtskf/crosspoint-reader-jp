@@ -18,7 +18,9 @@ class Utf8ClusterAssembler {
     Latin,       // ordinary printable codepoint — caller appends raw UTF-8 bytes to Latin buffer
     Whitespace,  // U+0020 / U+0009 / U+000A / U+000D — flush Latin, set nextJoin = Space
     Nbsp,        // U+00A0 / U+202F — flush, emit synthesized " " token with Glue, then nextJoin = Glue
-    Feff,        // U+FEFF (BOM) — discard
+    Feff,        // U+FEFF (BOM / ZWNBSP) — caller discards the codepoint; the assembler upgrades a
+                 // breakable adjacency (nextJoin CjkBreak→Glue) so the no-break intent survives, but
+                 // leaves a real Space (or an existing Glue) untouched
   };
 
   enum class ConsumeResult : uint8_t {
