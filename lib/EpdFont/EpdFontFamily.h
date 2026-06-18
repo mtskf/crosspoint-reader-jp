@@ -68,7 +68,14 @@ class EpdFontFamily {
   /// constraint instead of leaving it to documentation.
   void setFallback(const EpdFont* f) {
     if (f) {
-      assert(f->data->glyphMissHandler == nullptr &&
+      // resolveGlyph runs its pointer-identity miss detection on BOTH the selected primary
+      // (any of the four, per style) AND the fallback, so EVERY non-null primary must satisfy
+      // the same static-glyph-storage precondition as the fallback — not just the fallback.
+      assert((regular == nullptr || regular->data->glyphMissHandler == nullptr) &&
+             (bold == nullptr || bold->data->glyphMissHandler == nullptr) &&
+             (italic == nullptr || italic->data->glyphMissHandler == nullptr) &&
+             (boldItalic == nullptr || boldItalic->data->glyphMissHandler == nullptr) &&
+             f->data->glyphMissHandler == nullptr &&
              "setFallback: ring-buffer-backed fonts (glyphMissHandler != nullptr) "
              "are unsafe with the resolver's pointer-identity miss detection. "
              "If you need SD-backed fallback, use an SD-safe lookup that does not "
