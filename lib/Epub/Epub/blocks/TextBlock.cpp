@@ -2,6 +2,7 @@
 
 #include <BidiUtils.h>
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
 

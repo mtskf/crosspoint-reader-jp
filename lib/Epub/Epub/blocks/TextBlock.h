@@ -1,6 +1,7 @@
 #pragma once
 #include <EpdFontFamily.h>
-#include <HalStorage.h>
+
+class HalFile;
 
 #include <memory>
 #include <string>
@@ -42,6 +43,8 @@ class TextBlock final : public Block {
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   const BlockStyle& getBlockStyle() const { return blockStyle; }
   const std::vector<std::string>& getWords() const { return words; }
+  const std::vector<EpdFontFamily::Style>& getWordStyles() const { return wordStyles; }
+  const std::vector<int16_t>& getWordXpos() const { return wordXpos; }
   bool isEmpty() override { return words.empty(); }
   size_t wordCount() const { return words.size(); }
   // given a renderer works out where to break the words into lines

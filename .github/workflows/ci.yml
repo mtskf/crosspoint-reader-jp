@@ -123,6 +123,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify no placeholder sentinels in test sources
+        run: |
+          if git grep -l 'WILL_BE_REPLACED_AFTER_FIRST_RUN' -- test/ ; then
+            echo "::error::placeholder string WILL_BE_REPLACED_AFTER_FIRST_RUN still in test source." >&2
+            echo "::error::Run the test, copy the actual values, and replace the sentinels." >&2
+            exit 1
+          fi
+          if git grep -l 'VISUAL_ORDER_WORD_' -- test/ ; then
+            echo "::error::placeholder string VISUAL_ORDER_WORD_ still in test source." >&2
+            exit 1
+          fi
+          if git grep -l 'static_cast<int16_t>(-32768)' -- test/parsed_text/ ; then
+            echo "::error::placeholder int16 sentinel -32768 still in BiDi test source." >&2
+            exit 1
+          fi
+
       - name: Install build tools
         run: |
           sudo apt-get update
