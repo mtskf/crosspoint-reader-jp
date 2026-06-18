@@ -9,6 +9,8 @@
 #include <expat.h>
 
 #include <algorithm>
+#include <cassert>
+#include <cstdlib>
 #include <iterator>
 #include <new>
 
@@ -159,9 +161,10 @@ void ChapterHtmlSlimParser::flushPendingAnchor() {
   pendingAnchorId.clear();
 }
 
-// flush the contents of partWordBuffer to currentTextBlock
-void ChapterHtmlSlimParser::flushPartWordBuffer() {
-  // Determine font style from depth-based tracking and CSS effective style
+// Resolve the current font style from depth-based tracking and CSS effective style.
+// Verbatim extraction of flushPartWordBuffer's former style block (including underline), so the
+// Latin flush path stays byte-identical and the assembler can stage this same snapshot at stage time.
+EpdFontFamily::Style ChapterHtmlSlimParser::currentFontStyle() const {
   const bool isBold = boldUntilDepth < depth || effectiveBold;
   const bool isItalic = italicUntilDepth < depth || effectiveItalic;
   const bool isUnderline = underlineUntilDepth < depth || effectiveUnderline;
@@ -182,16 +185,92 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
   } else if (effectiveSub) {
     fontStyle = static_cast<EpdFontFamily::Style>(fontStyle | EpdFontFamily::SUB);
   }
+  return fontStyle;
+}
 
-  // flush the buffer
+// flush the contents of partWordBuffer to currentTextBlock
+void ChapterHtmlSlimParser::flushPartWordBuffer() {
   partWordBuffer[partWordBufferIndex] = '\0';
-  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextJoin);
+  currentTextBlock->addWord(partWordBuffer, currentFontStyle(), false, nextJoin);
   partWordBufferIndex = 0;
   nextJoin = WordJoin::Space;
 }
 
+// Drain any pending text — staged CJK base (via the assembler) and/or the Latin partWordBuffer —
+// into currentTextBlock. Returns which kind flushed LAST so inline-close callers can decide the
+// next join: Latin re-glues (Glue), CJK keeps CjkBreak (stays wrappable). Idempotent when nothing
+// is staged.
+ChapterHtmlSlimParser::FlushedKind ChapterHtmlSlimParser::flushPendingText() {
+  if (!currentTextBlock) return FlushedKind::None;
+  bool flushedCjk = false;
+  Utf8ClusterAssembler::Flushable f;
+  if (Utf8ClusterAssembler::flushPendingBase(clusterState, f)) {
+    // Use the stage-time snapshot (f.fontStyle / f.underline), NOT currentFontStyle()/
+    // effectiveUnderline — the style may have changed since the base was staged.
+    currentTextBlock->addWord(std::string(f.bytes, f.len), f.fontStyle, f.underline, f.join);
+    flushedCjk = true;
+  }
+  if (partWordBufferIndex > 0) {
+    flushPartWordBuffer();
+    return FlushedKind::Latin;  // Latin flushed last → Glue is safe for inline-close callers
+  }
+  return flushedCjk ? FlushedKind::Cjk : FlushedKind::None;
+}
+
+void ChapterHtmlSlimParser::emitCjkToken(const Utf8ClusterAssembler::Flushable& f) {
+  if (!currentTextBlock) return;
+  currentTextBlock->addWord(std::string(f.bytes, f.len), f.fontStyle, f.underline, f.join);
+}
+
+void ChapterHtmlSlimParser::dispatchNonCjk(Utf8ClusterAssembler::NonCjkKind kind, uint32_t cp) {
+  switch (kind) {
+    case Utf8ClusterAssembler::NonCjkKind::Latin: {
+      // Re-encode from cp (NOT from s[]) — the codepoint may have straddled a callback boundary.
+      std::string scratch;
+      utf8AppendCodepoint(cp, scratch);
+      // Append the codepoint ATOMICALLY: flush first if it wouldn't fit, so a multi-byte cp is
+      // never split across the MAX_WORD_SIZE boundary (no orphaned continuation bytes).
+      if (partWordBufferIndex + static_cast<int>(scratch.size()) >= MAX_WORD_SIZE) {
+        flushPartWordBuffer();
+      }
+      for (char b : scratch) partWordBuffer[partWordBufferIndex++] = b;
+      break;
+    }
+    case Utf8ClusterAssembler::NonCjkKind::Whitespace:
+      flushPendingText();
+      nextJoin = WordJoin::Space;
+      break;
+    case Utf8ClusterAssembler::NonCjkKind::Nbsp:
+      flushPendingText();
+      currentTextBlock->addWord(" ", currentFontStyle(), /*underline=*/false, WordJoin::Glue);
+      nextJoin = WordJoin::Glue;
+      break;
+    case Utf8ClusterAssembler::NonCjkKind::Feff:
+      break;  // discard BOM / ZWNBSP
+    default:
+      assert(false);
+      std::abort();
+  }
+}
+
+// Split currentTextBlock into pages when it grows past ~750 words, freeing a lot of memory.
+// Runs after each CJK emit AND once at the end of characterData to bound Latin-heavy callbacks too.
+void ChapterHtmlSlimParser::splitLongBlockIfNeeded() {
+  if (!currentTextBlock || currentTextBlock->size() <= 750) return;
+  LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
+  const int horizontalInset = currentTextBlock->getBlockStyle().totalHorizontalInset();
+  const uint16_t effectiveWidth = (horizontalInset < viewportWidth)
+                                      ? static_cast<uint16_t>(viewportWidth - horizontalInset)
+                                      : viewportWidth;
+  currentTextBlock->layoutAndExtractLines(
+      renderer, fontId, effectiveWidth,
+      [this](const std::shared_ptr<TextBlock>& tb) { addLineToPage(tb); }, false);
+}
+
 // start a new text block if needed
 void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
+  flushPendingText();          // Round-7 M9: drain pending CJK base / Latin into the previous block
+                               // before opening the new one. Idempotent if nothing staged.
   nextJoin = WordJoin::Space;  // New block = new paragraph, no continuation
   if (currentTextBlock) {
     // already have a text block running and it is empty - just reuse it
@@ -218,9 +297,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
 }
 
 void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
-  if (partWordBufferIndex > 0) {
-    flushPartWordBuffer();
-  }
+  flushPendingText();
 
   if (currentTextBlock) {
     const BlockStyle parentBlockStyle = currentTextBlock->getBlockStyle();
@@ -369,13 +446,12 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   if (strcmp(name, "table") == 0) {
     // skip nested tables
     if (self->tableDepth > 0) {
+      self->flushPendingText();  // Round-11: preserve outer-paragraph text before the table opens
       self->tableDepth += 1;
       return;
     }
 
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-    }
+    self->flushPendingText();
     self->tableDepth += 1;
     self->tableRowIndex = 0;
     self->tableColIndex = 0;
@@ -391,9 +467,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   }
 
   if (self->tableDepth == 1 && (strcmp(name, "td") == 0 || strcmp(name, "th") == 0)) {
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-    }
+    self->flushPendingText();
     self->tableColIndex += 1;
 
     auto tableCellBlockStyle = BlockStyle();
@@ -417,9 +491,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->inlineStyleStack.push_back(headerStyle);
     self->updateEffectiveInlineStyle();
     self->characterData(userData, headerText.c_str(), static_cast<int>(headerText.length()));
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-    }
+    self->flushPendingText();
     self->nextJoin = WordJoin::Space;
     self->inlineStyleStack.pop_back();
     self->updateEffectiveInlineStyle();
@@ -597,9 +669,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                 }
 
                 // Flush any pending text block so it appears before the image
-                if (self->partWordBufferIndex > 0) {
-                  self->flushPartWordBuffer();
-                }
+                self->flushPendingText();
                 if (self->currentTextBlock && !self->currentTextBlock->isEmpty()) {
                   const BlockStyle parentBlockStyle = self->currentTextBlock->getBlockStyle();
                   self->startNewTextBlock(parentBlockStyle);
@@ -741,9 +811,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 
     if (isInternalLink) {
       // Flush buffer before style change
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-        self->nextJoin = WordJoin::Glue;
+      {
+        const FlushedKind kind = self->flushPendingText();
+        if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
       }
       self->insideFootnoteLink = true;
       self->footnoteLinkDepth = self->depth;
@@ -806,10 +876,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->updateEffectiveInlineStyle();
   } else if (matches(name, BLOCK_TAGS, std::size(BLOCK_TAGS))) {
     if (strcmp(name, "br") == 0) {
-      if (self->partWordBufferIndex > 0) {
-        // flush word preceding <br/> to currentTextBlock before calling startNewTextBlock
-        self->flushPartWordBuffer();
-      }
+      // flush text preceding <br/> to currentTextBlock before calling startNewTextBlock
+      self->flushPendingText();
       self->startNewTextBlock(self->blockStyleStack.back().withoutBottom());
     } else {
       self->currentCssStyle = cssStyle;
@@ -825,9 +893,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
   } else if (matches(name, UNDERLINE_TAGS, std::size(UNDERLINE_TAGS))) {
     // Flush buffer before style change so preceding text gets current style
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-      self->nextJoin = WordJoin::Glue;
+    {
+      const FlushedKind kind = self->flushPendingText();
+      if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
     }
     self->underlineUntilDepth = std::min(self->underlineUntilDepth, self->depth);
     // Push inline style entry for underline tag
@@ -848,9 +916,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->updateEffectiveInlineStyle();
   } else if (matches(name, BOLD_TAGS, std::size(BOLD_TAGS))) {
     // Flush buffer before style change so preceding text gets current style
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-      self->nextJoin = WordJoin::Glue;
+    {
+      const FlushedKind kind = self->flushPendingText();
+      if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
     }
     self->boldUntilDepth = std::min(self->boldUntilDepth, self->depth);
     // Push inline style entry for bold tag
@@ -871,9 +939,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->updateEffectiveInlineStyle();
   } else if (matches(name, ITALIC_TAGS, std::size(ITALIC_TAGS))) {
     // Flush buffer before style change so preceding text gets current style
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-      self->nextJoin = WordJoin::Glue;
+    {
+      const FlushedKind kind = self->flushPendingText();
+      if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
     }
     self->italicUntilDepth = std::min(self->italicUntilDepth, self->depth);
     // Push inline style entry for italic tag
@@ -893,9 +961,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->inlineStyleStack.push_back(entry);
     self->updateEffectiveInlineStyle();
   } else if (strcmp(name, "sup") == 0 || strcmp(name, "sub") == 0) {
-    if (self->partWordBufferIndex > 0) {
-      self->flushPartWordBuffer();
-      self->nextJoin = WordJoin::Glue;
+    {
+      const FlushedKind kind = self->flushPendingText();
+      if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
     }
     StyleStackEntry entry;
     entry.depth = self->depth;
@@ -913,9 +981,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     if (cssStyle.hasFontWeight() || cssStyle.hasFontStyle() || cssStyle.hasTextDecoration() ||
         cssStyle.hasDirection() || cssStyle.hasVerticalAlign()) {
       // Flush buffer before style change so preceding text gets current style
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-        self->nextJoin = WordJoin::Glue;
+      {
+        const FlushedKind kind = self->flushPendingText();
+        if (kind == FlushedKind::Latin) self->nextJoin = WordJoin::Glue;
       }
       StyleStackEntry entry;
       entry.depth = self->depth;  // Track depth for matching pop
@@ -991,129 +1059,42 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     self->currentFootnote.number[self->currentFootnoteLinkTextLen] = '\0';
   }
 
-  for (int i = 0; i < len; i++) {
-    if (isWhitespace(s[i])) {
-      // Currently looking at whitespace, if there's anything in the partWordBuffer, flush it
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-      }
-      // Whitespace is a real word boundary — reset continuation state
-      self->nextJoin = WordJoin::Space;
-      // Skip the whitespace char
-      continue;
+  // Drive the cluster assembler one codepoint at a time. It stages CJK bases into clusterState
+  // (so a CJK base + its NFD extenders becomes a single, breakable word) and classifies non-CJK
+  // codepoints (Latin / whitespace / NBSP / FEFF) for the legacy branches below. CJK runs now break
+  // at the viewport edge instead of the old fixed MAX_WORD_SIZE word cut.
+  for (int i = 0; i < len;) {
+    Utf8ClusterAssembler::Flushable f;
+    Utf8ClusterAssembler::NonCjkKind kind;
+    uint32_t cp = 0;
+    uint8_t cpLen = 0;
+    const Utf8ClusterAssembler::ConsumeResult r = Utf8ClusterAssembler::tryConsumeCodepoint(
+        s, len, i, self->clusterState, self->nextJoin, self->currentFontStyle(), self->effectiveUnderline, f, kind, cp,
+        cpLen);
+
+    switch (r) {
+      case Utf8ClusterAssembler::ConsumeResult::NeedMore:
+        return;  // codepoint split across callbacks — resume next callback
+      case Utf8ClusterAssembler::ConsumeResult::StagedOnly:
+        break;  // keep looping
+      case Utf8ClusterAssembler::ConsumeResult::EmittedFlushable:
+        self->emitCjkToken(f);
+        self->splitLongBlockIfNeeded();
+        break;
+      case Utf8ClusterAssembler::ConsumeResult::NonCjkOnly:
+        self->dispatchNonCjk(kind, cp);
+        break;
+      case Utf8ClusterAssembler::ConsumeResult::EmittedAndNonCjk:
+        self->emitCjkToken(f);
+        self->splitLongBlockIfNeeded();
+        self->dispatchNonCjk(kind, cp);
+        break;
     }
-
-    // Detect U+00A0 (non-breaking space, UTF-8: 0xC2 0xA0) or
-    //        U+202F (narrow no-break space, UTF-8: 0xE2 0x80 0xAF).
-    //
-    // Both are rendered as a visible space but must never allow a line break around them.
-    // We split the no-break space into its own word token and link the surrounding words
-    // with continuation flags so the layout engine treats them as an indivisible group.
-    //
-    // Example: "200&#xA0;Quadratkilometer" or "200&#x202F;Quadratkilometer"
-    //   Input bytes:  "200\xC2\xA0Quadratkilometer"  (or 0xE2 0x80 0xAF for U+202F)
-    //   Tokens produced:
-    //     [0] "200"               continues=false
-    //     [1] " "                 continues=true   (attaches to "200", no gap)
-    //     [2] "Quadratkilometer"  continues=true   (attaches to " ", no gap)
-    //
-    //   The continuation flags prevent the line-breaker from inserting a line break
-    //   between "200" and "Quadratkilometer". However, "Quadratkilometer" is now a
-    //   standalone word for hyphenation purposes, so Liang patterns can produce
-    //   "200 Quadrat-" / "kilometer" instead of the unusable "200" / "Quadratkilometer".
-    if (static_cast<uint8_t>(s[i]) == 0xC2 && i + 1 < len && static_cast<uint8_t>(s[i + 1]) == 0xA0) {
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-      }
-
-      self->partWordBuffer[0] = ' ';
-      self->partWordBuffer[1] = '\0';
-      self->partWordBufferIndex = 1;
-      self->nextJoin = WordJoin::Glue;  // Attach space to previous word (no break).
-      self->flushPartWordBuffer();
-
-      self->nextJoin = WordJoin::Glue;  // Next real word attaches to this space (no break).
-
-      i++;  // Skip the second byte (0xA0)
-      continue;
-    }
-
-    // U+202F (narrow no-break space) — identical logic to U+00A0 above.
-    if (static_cast<uint8_t>(s[i]) == 0xE2 && i + 2 < len && static_cast<uint8_t>(s[i + 1]) == 0x80 &&
-        static_cast<uint8_t>(s[i + 2]) == 0xAF) {
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-      }
-
-      self->partWordBuffer[0] = ' ';
-      self->partWordBuffer[1] = '\0';
-      self->partWordBufferIndex = 1;
-      self->nextJoin = WordJoin::Glue;
-      self->flushPartWordBuffer();
-
-      self->nextJoin = WordJoin::Glue;
-
-      i += 2;  // Skip the remaining two bytes (0x80 0xAF)
-      continue;
-    }
-
-    // Skip Zero Width No-Break Space / BOM (U+FEFF) = 0xEF 0xBB 0xBF
-    const XML_Char FEFF_BYTE_1 = static_cast<XML_Char>(0xEF);
-    const XML_Char FEFF_BYTE_2 = static_cast<XML_Char>(0xBB);
-    const XML_Char FEFF_BYTE_3 = static_cast<XML_Char>(0xBF);
-
-    if (s[i] == FEFF_BYTE_1) {
-      // Check if the next two bytes complete the 3-byte sequence
-      if ((i + 2 < len) && (s[i + 1] == FEFF_BYTE_2) && (s[i + 2] == FEFF_BYTE_3)) {
-        // Sequence 0xEF 0xBB 0xBF found!
-        i += 2;    // Skip the next two bytes
-        continue;  // Move to the next iteration
-      }
-    }
-
-    // If we're about to run out of space, then cut the word off and start a new one.
-    // For CJK text (no spaces), this is the primary word-breaking mechanism.
-    // We must avoid splitting multi-byte UTF-8 sequences across word boundaries,
-    // otherwise the trailing bytes become orphaned continuation bytes that the
-    // decoder can't interpret.
-    if (self->partWordBufferIndex >= MAX_WORD_SIZE) {
-      int safeLen = utf8SafeTruncateBuffer(self->partWordBuffer, self->partWordBufferIndex);
-
-      if (safeLen < self->partWordBufferIndex && safeLen > 0) {
-        // Incomplete UTF-8 sequence at the end — save it before flushing
-        int overflow = self->partWordBufferIndex - safeLen;
-        char saved[4];
-        for (int j = 0; j < overflow; j++) {
-          saved[j] = self->partWordBuffer[safeLen + j];
-        }
-        self->partWordBufferIndex = safeLen;
-        self->flushPartWordBuffer();
-        for (int j = 0; j < overflow; j++) {
-          self->partWordBuffer[j] = saved[j];
-        }
-        self->partWordBufferIndex = overflow;
-      } else {
-        self->flushPartWordBuffer();
-      }
-    }
-
-    self->partWordBuffer[self->partWordBufferIndex++] = s[i];
   }
 
-  // If we have > 750 words buffered up, perform the layout and consume out all but the last line
-  // There should be enough here to build out 1-2 full pages and doing this will free up a lot of
-  // memory.
-  // Spotted when reading Intermezzo, there are some really long text blocks in there.
-  if (self->currentTextBlock->size() > 750) {
-    LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
-    const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
-    const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
-                                        ? static_cast<uint16_t>(self->viewportWidth - horizontalInset)
-                                        : self->viewportWidth;
-    self->currentTextBlock->layoutAndExtractLines(
-        self->renderer, self->fontId, effectiveWidth,
-        [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
-  }
+  // Bound Latin-heavy callbacks too: split once after draining the chunk (CJK emits already split
+  // per-token above). See splitLongBlockIfNeeded for the rationale.
+  self->splitLongBlockIfNeeded();
 }
 
 void XMLCALL ChapterHtmlSlimParser::defaultHandlerExpand(void* userData, const XML_Char* s, const int len) {
@@ -1151,27 +1132,27 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   if (self->tableDepth > 1 && strcmp(name, "table") == 0) {
     // get rid of all text inside the nested table
     self->partWordBufferIndex = 0;
+    self->clusterState = Utf8ClusterAssembler::State{};  // drop staged CJK too (NOT a flush)
     self->tableDepth -= 1;
     LOG_DBG("EHP", "nested table detected, get rid of its content");
     return;
   }
 
-  // Flush buffer with current style BEFORE any style changes
-  if (self->partWordBufferIndex > 0) {
-    // Flush if style will change OR if we're closing a block/structural element
-    const bool isInlineTag = !headerOrBlockTag && !tableStructuralTag &&
-                             !matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) && self->depth != 1;
-    const bool shouldFlush = styleWillChange || headerOrBlockTag || matches(name, BOLD_TAGS, std::size(BOLD_TAGS)) ||
-                             matches(name, ITALIC_TAGS, std::size(ITALIC_TAGS)) ||
-                             matches(name, UNDERLINE_TAGS, std::size(UNDERLINE_TAGS)) || tableStructuralTag ||
-                             matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) || self->depth == 1;
+  // Flush buffer with current style BEFORE any style changes.
+  // Flush if style will change OR if we're closing a block/structural element.
+  const bool isInlineTag = !headerOrBlockTag && !tableStructuralTag &&
+                           !matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) && self->depth != 1;
+  const bool shouldFlush = styleWillChange || headerOrBlockTag || matches(name, BOLD_TAGS, std::size(BOLD_TAGS)) ||
+                           matches(name, ITALIC_TAGS, std::size(ITALIC_TAGS)) ||
+                           matches(name, UNDERLINE_TAGS, std::size(UNDERLINE_TAGS)) || tableStructuralTag ||
+                           matches(name, IMAGE_TAGS, std::size(IMAGE_TAGS)) || self->depth == 1;
 
-    if (shouldFlush) {
-      self->flushPartWordBuffer();
-      // If closing an inline element, the next word fragment continues the same visual word
-      if (isInlineTag) {
-        self->nextJoin = WordJoin::Glue;
-      }
+  if (shouldFlush) {
+    const FlushedKind kind = self->flushPendingText();
+    // If closing an inline element, a Latin fragment continues the same visual word; a CJK base
+    // must stay on CjkBreak so it remains wrappable across the boundary.
+    if (isInlineTag && kind == FlushedKind::Latin) {
+      self->nextJoin = WordJoin::Glue;
     }
   }
 

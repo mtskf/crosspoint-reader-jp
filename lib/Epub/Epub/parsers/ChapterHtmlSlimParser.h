@@ -14,6 +14,7 @@
 #include "Epub/blocks/TextBlock.h"
 #include "Epub/css/CssParser.h"
 #include "Epub/css/CssStyle.h"
+#include "Utf8ClusterAssembler.h"
 
 class Page;
 class GfxRenderer;
@@ -37,6 +38,10 @@ class ChapterHtmlSlimParser {
   char partWordBuffer[MAX_WORD_SIZE + 1] = {};
   int partWordBufferIndex = 0;
   WordJoin nextJoin = WordJoin::Space;  // how the next flushed word joins the previous (inline element boundary)
+  // Kind of text drained by flushPendingText(): inline-close callers re-glue Latin (Glue) but must
+  // leave a CJK base on CjkBreak so it stays wrappable across the boundary.
+  enum class FlushedKind : uint8_t { None, Latin, Cjk };
+  Utf8ClusterAssembler::State clusterState;  // cross-callback CJK base / truncated-codepoint staging
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
@@ -100,6 +105,11 @@ class ChapterHtmlSlimParser {
   void startNewTextBlock(const BlockStyle& blockStyle);
   void flushPendingAnchor();
   void flushPartWordBuffer();
+  EpdFontFamily::Style currentFontStyle() const;
+  FlushedKind flushPendingText();
+  void emitCjkToken(const Utf8ClusterAssembler::Flushable& f);
+  void dispatchNonCjk(Utf8ClusterAssembler::NonCjkKind kind, uint32_t cp);
+  void splitLongBlockIfNeeded();
   void makePages();
   static void applyDirectionToEntry(StyleStackEntry& entry, const CssStyle& css);
   void emitHorizontalRule(const BlockStyle& blockStyle);

@@ -337,3 +337,30 @@ TEST(ParsedTextLayout, FocusReadingPreservesUnderlineOnCjkCluster) {
   EXPECT_EQ(static_cast<int>(styles[0]) & static_cast<int>(EpdFontFamily::BOLD), 0)
       << "focus-bypass must still skip focus-bolding of a single CJK cluster";
 }
+
+// CJK across an inline-style boundary MUST keep CjkBreak (stays wrappable).
+TEST(ParsedTextLayout, ParserSequenceCjkAcrossInlineStyleStaysBreakable) {
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
+                  /*focusReadingEnabled=*/false, leftAligned());
+  text.addWord("ab", EpdFontFamily::REGULAR);                                      // join=Space
+  text.addWord("\xE6\x97\xA5", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak); // 日
+  text.addWord("\xE6\x9C\xAC", EpdFontFamily::ITALIC, false, WordJoin::CjkBreak);  // 本 (italic via <em>)
+  text.addWord("\xE8\xAA\x9E", EpdFontFamily::REGULAR, false, WordJoin::CjkBreak); // 語
+  auto lines = linesOf(text, 3 * kCell);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_EQ(lines[0], "ab\xE6\x97\xA5");              // ab日
+  EXPECT_EQ(lines[1], "\xE6\x9C\xAC\xE8\xAA\x9E");    // 本語
+}
+
+// Latin inline-close MUST keep Glue (preserves quickly).
+TEST(ParsedTextLayout, ParserSequenceLatinAcrossInlineStyleStaysGlued) {
+  ParsedText text(/*extraParagraphSpacing=*/false, /*hyphenationEnabled=*/false,
+                  /*focusReadingEnabled=*/false, leftAligned());
+  text.addWord("a", EpdFontFamily::REGULAR);                          // join=Space
+  text.addWord("quick", EpdFontFamily::REGULAR);                      // join=Space
+  text.addWord("ly", EpdFontFamily::ITALIC, false, WordJoin::Glue);   // Glue — inline close
+  auto lines = linesOf(text, 7 * kCell);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_EQ(lines[0], "a");
+  EXPECT_EQ(lines[1], "quickly");
+}
