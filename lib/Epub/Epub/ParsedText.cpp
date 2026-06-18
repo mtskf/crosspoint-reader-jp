@@ -119,11 +119,45 @@ bool isWordCharacter(uint32_t cp) {
   return true;
 }
 
+// Returns true iff word is a single CJK grapheme cluster: one CJK base
+// codepoint optionally followed by grapheme extenders (combining marks,
+// voicing marks, ideographic tone marks, variation selectors). Parser
+// emits these as single tokens via pendingCjkBase, so the focus tokenizer
+// must treat the whole cluster as one unit.
+static bool isSingleCjkGraphemeCluster(const std::string& s) {
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(s.c_str());
+  uint32_t firstCp = utf8NextCodepoint(&p);
+  // `firstCp == 0` covers empty string (defensive); reject so the bypass only
+  // fires for genuine CJK clusters.
+  if (firstCp == 0 || !utf8IsCjkBreakable(firstCp)) return false;
+  // Everything after the first codepoint must be a grapheme extender
+  // (no second base codepoint allowed).
+  while (*p) {
+    uint32_t cp = utf8NextCodepoint(&p);
+    if (cp == 0) return false;
+    if (!utf8IsGraphemeExtender(cp)) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle, const bool underline,
-                         const bool attachToPrevious) {
+                         const WordJoin join) {
   if (word.empty()) return;
+
+  // CJK grapheme-cluster tokens are pre-split by the parser into single
+  // breakable units. The focus-reading tokenizer would either bold the whole
+  // token or split base from extender — both wrong. Bypass focus split for any
+  // single CJK grapheme cluster regardless of `join` (which is a BOUNDARY
+  // descriptor, not a token-kind tag; the first CJK char of a run carries Space).
+  if (focusReadingEnabled && isSingleCjkGraphemeCluster(word)) {
+    words.emplace_back(std::move(word));
+    wordStyles.push_back(fontStyle);
+    wordJoins.push_back(join);
+    wordIsFocusSuffix.push_back(false);
+    return;
+  }
 
   EpdFontFamily::Style baseStyle = fontStyle;
   if (underline) {
@@ -136,7 +170,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   if (!this->focusReadingEnabled || (baseStyle & EpdFontFamily::BOLD) != 0) {
     words.push_back(std::move(word));
     wordStyles.push_back(baseStyle);
-    wordContinues.push_back(attachToPrevious);
+    wordJoins.push_back(join);
     wordIsFocusSuffix.push_back(false);
     if (wordStartsRtl) {
       hasRtlWord = true;
@@ -165,18 +199,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
     words.reserve(newCapacity);
     wordStyles.reserve(newCapacity);
-    wordContinues.reserve(newCapacity);
+    wordJoins.reserve(newCapacity);
     wordIsFocusSuffix.reserve(newCapacity);
   }
 
   // Lambda helper to process and push individual sub-segments of the string
   // Use std::string_view to avoid heap allocations when slicing
-  auto processSegment = [&](std::string_view segment, bool isWord, bool attach) {
+  auto processSegment = [&](std::string_view segment, bool isWord, WordJoin attach) {
     if (!isWord) {
       // Punctuation and Numbers stay regular
       words.emplace_back(segment);
       wordStyles.push_back(baseStyle);
-      wordContinues.push_back(attach);
+      wordJoins.push_back(attach);
       wordIsFocusSuffix.push_back(false);
     } else {
       size_t charCount = 0;
@@ -197,7 +231,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
         // Whole segment is bold - no suffix split needed
         words.emplace_back(segment);
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
-        wordContinues.push_back(attach);
+        wordJoins.push_back(attach);
         wordIsFocusSuffix.push_back(false);
       } else {
         countPtr = reinterpret_cast<const unsigned char*>(segment.data());
@@ -209,13 +243,13 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
         // Bold prefix
         words.emplace_back(segment.substr(0, splitByteOffset));
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
-        wordContinues.push_back(attach);
+        wordJoins.push_back(attach);
         wordIsFocusSuffix.push_back(false);
 
         // Regular suffix - marked so extractLine can merge it back into single TextBlock entry
         words.emplace_back(segment.substr(splitByteOffset));
         wordStyles.push_back(baseStyle);
-        wordContinues.push_back(true);
+        wordJoins.push_back(WordJoin::Glue);
         wordIsFocusSuffix.push_back(true);
       }
     }
@@ -241,9 +275,9 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
       size_t segmentLen = currentCpStart - segmentStart;
       std::string_view segment(reinterpret_cast<const char*>(segmentStart), segmentLen);
 
-      // Only the very first segment inherits the original attachToPrevious flag.
-      // Every subsequent segment MUST attach=true so it glues seamlessly to the prefix.
-      processSegment(segment, inWordSegment, isFirstSegment ? attachToPrevious : true);
+      // Only the very first segment inherits the original join flag.
+      // Every subsequent segment MUST glue seamlessly to the prefix.
+      processSegment(segment, inWordSegment, isFirstSegment ? join : WordJoin::Glue);
 
       // Setup for the next segment
       segmentStart = currentCpStart;
@@ -255,7 +289,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // Process the final remaining segment
   size_t segmentLen = end - segmentStart;
   std::string_view segment(reinterpret_cast<const char*>(segmentStart), segmentLen);
-  processSegment(segment, inWordSegment, isFirstSegment ? attachToPrevious : true);
+  processSegment(segment, inWordSegment, isFirstSegment ? join : WordJoin::Glue);
   if (wordStartsRtl) {
     hasRtlWord = true;
   }
@@ -324,14 +358,14 @@ void ParsedText::layoutAndExtractLines(const ITextMetrics& renderer, const int f
   std::vector<size_t> lineBreakIndices;
   if (hyphenationEnabled) {
     // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
-    lineBreakIndices = computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues);
+    lineBreakIndices = computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordJoins);
   } else {
-    lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues);
+    lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordJoins);
   }
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
 
   for (size_t i = 0; i < lineCount; ++i) {
-    extractLine(i, pageWidth, wordWidths, wordContinues, lineBreakIndices, processLine, renderer, fontId);
+    extractLine(i, pageWidth, wordWidths, wordJoins, lineBreakIndices, processLine, renderer, fontId);
   }
 
   // Remove consumed words so size() reflects only remaining words
@@ -339,7 +373,7 @@ void ParsedText::layoutAndExtractLines(const ITextMetrics& renderer, const int f
     const size_t consumed = lineBreakIndices[lineCount - 1];
     words.erase(words.begin(), words.begin() + consumed);
     wordStyles.erase(wordStyles.begin(), wordStyles.begin() + consumed);
-    wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
+    wordJoins.erase(wordJoins.begin(), wordJoins.begin() + consumed);
     wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
   }
 }
@@ -356,7 +390,7 @@ std::vector<uint16_t> ParsedText::calculateWordWidths(const ITextMetrics& render
 }
 
 std::vector<size_t> ParsedText::computeLineBreaks(const ITextMetrics& renderer, const int fontId, const int pageWidth,
-                                                  std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec) {
+                                                  std::vector<uint16_t>& wordWidths, std::vector<WordJoin>& joinsVec) {
   if (words.empty()) {
     return {};
   }
@@ -395,10 +429,10 @@ std::vector<size_t> ParsedText::computeLineBreaks(const ITextMetrics& renderer, 
     for (size_t j = i; j < totalWordCount; ++j) {
       // Add space before word j, unless it's the first word on the line or a continuation
       int gap = 0;
-      if (j > static_cast<size_t>(i) && !continuesVec[j]) {
+      if (j > static_cast<size_t>(i) && needsSpaceBefore(joinsVec[j])) {
         gap =
             renderer.getSpaceAdvance(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1]);
-      } else if (j > static_cast<size_t>(i) && continuesVec[j]) {
+      } else if (j > static_cast<size_t>(i) && !needsSpaceBefore(joinsVec[j])) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
         gap = renderer.getKerning(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1]);
       }
@@ -408,8 +442,9 @@ std::vector<size_t> ParsedText::computeLineBreaks(const ITextMetrics& renderer, 
         break;
       }
 
-      // Cannot break after word j if the next word attaches to it (continuation group)
-      if (j + 1 < totalWordCount && continuesVec[j + 1]) {
+      // Cannot break after word j if the next word attaches to it (continuation group).
+      // Only Glue forbids a break; CjkBreak permits it.
+      if (j + 1 < totalWordCount && !canBreakBefore(joinsVec[j + 1])) {
         continue;
       }
 
@@ -470,7 +505,7 @@ std::vector<size_t> ParsedText::computeLineBreaks(const ITextMetrics& renderer, 
 // Builds break indices while opportunistically splitting the word that would overflow the current line.
 std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const ITextMetrics& renderer, const int fontId,
                                                             const int pageWidth, std::vector<uint16_t>& wordWidths,
-                                                            std::vector<bool>& continuesVec) {
+                                                            std::vector<WordJoin>& joinsVec) {
   const int firstLineIndent = resolveFirstLineIndent(true, renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
@@ -488,10 +523,10 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const ITextMetrics& 
     while (currentIndex < wordWidths.size()) {
       const bool isFirstWord = currentIndex == lineStart;
       int spacing = 0;
-      if (!isFirstWord && !continuesVec[currentIndex]) {
+      if (!isFirstWord && needsSpaceBefore(joinsVec[currentIndex])) {
         spacing = renderer.getSpaceAdvance(fontId, lastCodepoint(words[currentIndex - 1]),
                                            firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1]);
-      } else if (!isFirstWord && continuesVec[currentIndex]) {
+      } else if (!isFirstWord && !needsSpaceBefore(joinsVec[currentIndex])) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
         spacing = renderer.getKerning(fontId, lastCodepoint(words[currentIndex - 1]),
                                       firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1]);
@@ -527,7 +562,8 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const ITextMetrics& 
 
     // Don't break before a continuation word (e.g., orphaned "?" after "question").
     // Backtrack to the start of the continuation group so the whole group moves to the next line.
-    while (currentIndex > lineStart + 1 && currentIndex < wordWidths.size() && continuesVec[currentIndex]) {
+    // Only Glue forbids a break here; CjkBreak permits it.
+    while (currentIndex > lineStart + 1 && currentIndex < wordWidths.size() && !canBreakBefore(joinsVec[currentIndex])) {
       --currentIndex;
     }
 
@@ -616,8 +652,8 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   //
   // This lets the backtracking loop keep the entire prefix group ("200 Quadrat-") on one
   // line, while "kilometer" moves to the next line.
-  // wordContinues[wordIndex] is intentionally left unchanged — the prefix keeps its original attachment.
-  wordContinues.insert(wordContinues.begin() + wordIndex + 1, false);
+  // wordJoins[wordIndex] is intentionally left unchanged — the prefix keeps its original attachment.
+  wordJoins.insert(wordJoins.begin() + wordIndex + 1, WordJoin::Space);
 
   // Update cached widths to reflect the new prefix/remainder pairing.
   wordWidths[wordIndex] = static_cast<uint16_t>(chosenWidth);
@@ -627,7 +663,7 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
 }
 
 void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const std::vector<uint16_t>& wordWidths,
-                             const std::vector<bool>& continuesVec, const std::vector<size_t>& lineBreakIndices,
+                             const std::vector<WordJoin>& joinsVec, const std::vector<size_t>& lineBreakIndices,
                              const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
                              const ITextMetrics& renderer, const int fontId) {
   const size_t lineBreak = lineBreakIndices[breakIndex];
@@ -660,11 +696,11 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   for (size_t wordIdx = 0; wordIdx < lineWordCount; wordIdx++) {
     lineWordWidthSum += wordWidths[lastBreakAt + wordIdx];
     // Count gaps: each word after the first creates a gap, unless it's a continuation
-    if (wordIdx > 0 && !continuesVec[lastBreakAt + wordIdx]) {
+    if (wordIdx > 0 && needsSpaceBefore(joinsVec[lastBreakAt + wordIdx])) {
       actualGapCount++;
       totalNaturalGaps += renderer.getSpaceAdvance(fontId, lastCodepoint(lineWords[wordIdx - 1]),
                                                    firstCodepoint(lineWords[wordIdx]), lineWordStyles[wordIdx - 1]);
-    } else if (wordIdx > 0 && continuesVec[lastBreakAt + wordIdx]) {
+    } else if (wordIdx > 0 && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx])) {
       // Non-breaking space tokens (" " with continues=true) are visible, stretchable spaces —
       // count them as justifiable gaps so justifyExtra is distributed to them too.
       if (lineWords[wordIdx] == " ") {
@@ -708,12 +744,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     reorderedWordsScratch.clear();
     reorderedStylesScratch.clear();
     reorderedWidthsScratch.clear();
-    reorderedContinuesScratch.clear();
+    reorderedJoinsScratch.clear();
     reorderedFocusSuffixScratch.clear();
     reorderedWordsScratch.reserve(visualOrderScratch.size());
     reorderedStylesScratch.reserve(visualOrderScratch.size());
     reorderedWidthsScratch.reserve(visualOrderScratch.size());
-    reorderedContinuesScratch.reserve(visualOrderScratch.size());
+    reorderedJoinsScratch.reserve(visualOrderScratch.size());
     reorderedFocusSuffixScratch.reserve(visualOrderScratch.size());
 
     for (size_t i = 0; i < visualOrderScratch.size(); ++i) {
@@ -726,20 +762,23 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       // Continuation means "no break/gap between two adjacent logical tokens".
       // After visual reordering (common in RTL), an adjacent logical pair can appear
       // as either (prev -> curr) or (curr -> prev) in visual order; preserve both.
-      bool continues = false;
+      // Carry the full WordJoin from the adjacent source index rather than collapsing
+      // to a bool, so CjkBreak survives reordering. The Space default for non-adjacent
+      // reorder pairs is unreachable in pure-Japanese and is explicitly out of scope.
+      WordJoin join = WordJoin::Space;
       if (i > 0) {
         const size_t prevSrc = visualOrderScratch[i - 1];
         const size_t currSrc = src;
         const bool forwardAdjacent = currSrc == prevSrc + 1;
         const bool reverseAdjacent = prevSrc == currSrc + 1;
 
-        if (forwardAdjacent && continuesVec[lastBreakAt + currSrc]) {
-          continues = true;
-        } else if (reverseAdjacent && continuesVec[lastBreakAt + prevSrc]) {
-          continues = true;
+        if (forwardAdjacent) {
+          join = joinsVec[lastBreakAt + currSrc];
+        } else if (reverseAdjacent) {
+          join = joinsVec[lastBreakAt + prevSrc];
         }
       }
-      reorderedContinuesScratch.push_back(continues);
+      reorderedJoinsScratch.push_back(join);
     }
 
     int reorderedWordWidthSum = 0;
@@ -747,12 +786,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     int reorderedNaturalGaps = 0;
     for (size_t wordIdx = 0; wordIdx < reorderedWidthsScratch.size(); wordIdx++) {
       reorderedWordWidthSum += reorderedWidthsScratch[wordIdx];
-      if (wordIdx > 0 && !reorderedContinuesScratch[wordIdx]) {
+      if (wordIdx > 0 && needsSpaceBefore(reorderedJoinsScratch[wordIdx])) {
         reorderedGapCount++;
         reorderedNaturalGaps += renderer.getSpaceAdvance(fontId, lastCodepoint(reorderedWordsScratch[wordIdx - 1]),
                                                          firstCodepoint(reorderedWordsScratch[wordIdx]),
                                                          reorderedStylesScratch[wordIdx - 1]);
-      } else if (wordIdx > 0 && reorderedContinuesScratch[wordIdx]) {
+      } else if (wordIdx > 0 && !needsSpaceBefore(reorderedJoinsScratch[wordIdx])) {
         if (reorderedWordsScratch[wordIdx] == " ") {
           reorderedGapCount++;
         }
@@ -794,12 +833,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       xpos += reorderedWidthsScratch[wordIdx];
 
       const bool nextIsContinuation =
-          wordIdx + 1 < reorderedWidthsScratch.size() && reorderedContinuesScratch[wordIdx + 1];
+          wordIdx + 1 < reorderedWidthsScratch.size() && !needsSpaceBefore(reorderedJoinsScratch[wordIdx + 1]);
       if (nextIsContinuation) {
         int advance =
             renderer.getKerning(fontId, lastCodepoint(reorderedWordsScratch[wordIdx]),
                                 firstCodepoint(reorderedWordsScratch[wordIdx + 1]), reorderedStylesScratch[wordIdx]);
-        if (reorderedWordsScratch[wordIdx] == " " && reorderedContinuesScratch[wordIdx] &&
+        if (reorderedWordsScratch[wordIdx] == " " && !needsSpaceBefore(reorderedJoinsScratch[wordIdx]) &&
             effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
           advance += reorderedJustifyExtra;
         }
@@ -834,12 +873,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
         xpos -= wordWidths[lastBreakAt + wordIdx];
         lineXPos.push_back(static_cast<int16_t>(xpos));
 
-        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && continuesVec[lastBreakAt + wordIdx + 1];
+        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
         if (nextIsContinuation) {
           // Cross-boundary kerning for continuation words
           int advance = renderer.getKerning(fontId, lastCodepoint(lineWords[wordIdx]),
                                             firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx]);
-          if (lineWords[wordIdx] == " " && continuesVec[lastBreakAt + wordIdx] &&
+          if (lineWords[wordIdx] == " " && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx]) &&
               effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
             advance += justifyExtra;
           }
@@ -868,12 +907,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       for (size_t wordIdx = 0; wordIdx < lineWordCount; wordIdx++) {
         lineXPos.push_back(static_cast<int16_t>(xpos));
 
-        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && continuesVec[lastBreakAt + wordIdx + 1];
+        const bool nextIsContinuation = wordIdx + 1 < lineWordCount && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx + 1]);
         if (nextIsContinuation) {
           int advance = wordWidths[lastBreakAt + wordIdx];
           advance += renderer.getKerning(fontId, lastCodepoint(lineWords[wordIdx]),
                                          firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx]);
-          if (lineWords[wordIdx] == " " && continuesVec[lastBreakAt + wordIdx] &&
+          if (lineWords[wordIdx] == " " && !needsSpaceBefore(joinsVec[lastBreakAt + wordIdx]) &&
               effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
             advance += justifyExtra;
           }

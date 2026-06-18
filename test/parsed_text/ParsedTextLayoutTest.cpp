@@ -94,8 +94,8 @@ TEST(ParsedTextLayout, NoBreakSpaceGlueKeepsGroupAtomic) {
                   leftAligned());
   text.addWord("x", EpdFontFamily::REGULAR);    // join=Space (default)
   text.addWord("200", EpdFontFamily::REGULAR);  // join=Space — breakable before
-  text.addWord(" ", EpdFontFamily::REGULAR, /*underline=*/false, /*attachToPrevious=*/true);   // NBSP — Glue
-  text.addWord("km", EpdFontFamily::REGULAR, /*underline=*/false, /*attachToPrevious=*/true);  // Glue
+  text.addWord(" ", EpdFontFamily::REGULAR, /*underline=*/false, WordJoin::Glue);   // NBSP — Glue
+  text.addWord("km", EpdFontFamily::REGULAR, /*underline=*/false, WordJoin::Glue);  // Glue
   auto lines = linesOf(text, 6 * kCell);
   // Glue forbids breaking between "200", " ", and "km" — the trio must move as one
   // unit. The optimal layout puts "x" on line 0 and "200 km" on line 1.

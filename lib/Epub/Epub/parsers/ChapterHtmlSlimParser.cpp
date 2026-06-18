@@ -185,14 +185,14 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
 
   // flush the buffer
   partWordBuffer[partWordBufferIndex] = '\0';
-  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
+  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextJoin);
   partWordBufferIndex = 0;
-  nextWordContinues = false;
+  nextJoin = WordJoin::Space;
 }
 
 // start a new text block if needed
 void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
-  nextWordContinues = false;  // New block = new paragraph, no continuation
+  nextJoin = WordJoin::Space;  // New block = new paragraph, no continuation
   if (currentTextBlock) {
     // already have a text block running and it is empty - just reuse it
     if (currentTextBlock->isEmpty()) {
@@ -420,7 +420,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     if (self->partWordBufferIndex > 0) {
       self->flushPartWordBuffer();
     }
-    self->nextWordContinues = false;
+    self->nextJoin = WordJoin::Space;
     self->inlineStyleStack.pop_back();
     self->updateEffectiveInlineStyle();
 
@@ -743,7 +743,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       // Flush buffer before style change
       if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
-        self->nextWordContinues = true;
+        self->nextJoin = WordJoin::Glue;
       }
       self->insideFootnoteLink = true;
       self->footnoteLinkDepth = self->depth;
@@ -827,7 +827,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     // Flush buffer before style change so preceding text gets current style
     if (self->partWordBufferIndex > 0) {
       self->flushPartWordBuffer();
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
     }
     self->underlineUntilDepth = std::min(self->underlineUntilDepth, self->depth);
     // Push inline style entry for underline tag
@@ -850,7 +850,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     // Flush buffer before style change so preceding text gets current style
     if (self->partWordBufferIndex > 0) {
       self->flushPartWordBuffer();
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
     }
     self->boldUntilDepth = std::min(self->boldUntilDepth, self->depth);
     // Push inline style entry for bold tag
@@ -873,7 +873,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     // Flush buffer before style change so preceding text gets current style
     if (self->partWordBufferIndex > 0) {
       self->flushPartWordBuffer();
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
     }
     self->italicUntilDepth = std::min(self->italicUntilDepth, self->depth);
     // Push inline style entry for italic tag
@@ -895,7 +895,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   } else if (strcmp(name, "sup") == 0 || strcmp(name, "sub") == 0) {
     if (self->partWordBufferIndex > 0) {
       self->flushPartWordBuffer();
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
     }
     StyleStackEntry entry;
     entry.depth = self->depth;
@@ -915,7 +915,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       // Flush buffer before style change so preceding text gets current style
       if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
-        self->nextWordContinues = true;
+        self->nextJoin = WordJoin::Glue;
       }
       StyleStackEntry entry;
       entry.depth = self->depth;  // Track depth for matching pop
@@ -998,7 +998,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
         self->flushPartWordBuffer();
       }
       // Whitespace is a real word boundary — reset continuation state
-      self->nextWordContinues = false;
+      self->nextJoin = WordJoin::Space;
       // Skip the whitespace char
       continue;
     }
@@ -1029,10 +1029,10 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       self->partWordBuffer[0] = ' ';
       self->partWordBuffer[1] = '\0';
       self->partWordBufferIndex = 1;
-      self->nextWordContinues = true;  // Attach space to previous word (no break).
+      self->nextJoin = WordJoin::Glue;  // Attach space to previous word (no break).
       self->flushPartWordBuffer();
 
-      self->nextWordContinues = true;  // Next real word attaches to this space (no break).
+      self->nextJoin = WordJoin::Glue;  // Next real word attaches to this space (no break).
 
       i++;  // Skip the second byte (0xA0)
       continue;
@@ -1048,10 +1048,10 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       self->partWordBuffer[0] = ' ';
       self->partWordBuffer[1] = '\0';
       self->partWordBufferIndex = 1;
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
       self->flushPartWordBuffer();
 
-      self->nextWordContinues = true;
+      self->nextJoin = WordJoin::Glue;
 
       i += 2;  // Skip the remaining two bytes (0x80 0xAF)
       continue;
@@ -1170,7 +1170,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
       self->flushPartWordBuffer();
       // If closing an inline element, the next word fragment continues the same visual word
       if (isInlineTag) {
-        self->nextWordContinues = true;
+        self->nextJoin = WordJoin::Glue;
       }
     }
   }
@@ -1198,18 +1198,18 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   }
 
   if (self->tableDepth == 1 && (strcmp(name, "td") == 0 || strcmp(name, "th") == 0)) {
-    self->nextWordContinues = false;
+    self->nextJoin = WordJoin::Space;
   }
 
   if (self->tableDepth == 1 && (strcmp(name, "tr") == 0)) {
-    self->nextWordContinues = false;
+    self->nextJoin = WordJoin::Space;
   }
 
   if (self->tableDepth == 1 && strcmp(name, "table") == 0) {
     self->tableDepth -= 1;
     self->tableRowIndex = 0;
     self->tableColIndex = 0;
-    self->nextWordContinues = false;
+    self->nextJoin = WordJoin::Space;
   }
 
   // Leaving bold tag
